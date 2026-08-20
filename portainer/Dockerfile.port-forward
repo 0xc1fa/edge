@@ -1,0 +1,17 @@
+# port-forward 容器：在宿主(第1层)用 socat 把外部流量转发进 dind 内服务
+#
+# 为什么在宿主而不是 dind 内：
+#   - 转发点必须监听外部可访问的地址（宿主网卡），dind 内监听外部访问不到
+#   - 且独立容器不占 dind 配额、重启不影响 dind
+#
+# 用法：PF_RULES 环境变量定义转发规则（逗号分隔）：
+#   8088:dind-platform:8080   → 宿主 8088 → dind-platform 容器 8080
+#   (规则: 监听端口:目标主机:目标端口，目标主机可用 compose 网络名)
+FROM alpine:3.22
+
+RUN apk add --no-cache socat
+
+COPY entrypoint-port-forward.sh /usr/local/bin/entrypoint-port-forward.sh
+RUN chmod +x /usr/local/bin/entrypoint-port-forward.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-port-forward.sh"]

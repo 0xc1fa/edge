@@ -1,0 +1,14 @@
+# nvidia-container-toolkit 配置（挂载进 dind 的修正版）
+# 与原版差异：
+#   - load-kmods=false：宿主已加载内核模块，dind 内无 modprobe
+#   - ldcache：直接读宿主挂载的 /etc/ld.so.cache（dind 的 ldconfig 是 musl 版，
+#     不支持 glibc 的 -p 参数，CLI 依赖该缓存解析驱动库路径）
+disable-require = false
+supported-driver-capabilities = "compute,utility"
+
+[nvidia-container-cli]
+load-kmods = false
+ldcache = "/etc/ld.so.cache"
+# 挂载的 glibc 版 ldconfig（static-pie，可直接运行）：CLI 在目标容器内 chroot 执行，
+# 生成驱动库软链（libcuda.so.1 等），否则容器内只有版本号文件导致 nvidia-smi 找不到库
+ldconfig = "@/sbin/ldconfig.real"

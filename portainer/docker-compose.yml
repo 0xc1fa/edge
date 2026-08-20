@@ -1,0 +1,156 @@
+# Portainer CE + DinD 隔离环境（单 compose 一键启动）
+#
+# 架构：
+#   宿主 Docker ── 第1层
+#     ├─ portainer(Server)：不挂宿主 socket，只通过 Agent 连 dind → 宿主容器不可见
+#     └─ dind-platform：第2层 dockerd + GPU 卡0 穿透 → Portainer 的唯一环境
+#
+# 改进：
+#   - dind 内自动启动 portainer-agent（镜像预置进镜像，不依赖 dind 外网）
+#   - auto-register 服务通过 Portainer API 自动注册 dind 环境（幂等）
+#   - 资源限制使用顶层 cpus/mem_limit（deploy.resources 在非 swarm 下不生效）
+#   - 首次启动流程：docker compose up -d --build
+#       前提：先执行 docker save portainer/agent:lts -o agent.tar（宿主已有镜像加速）
+#
+# 注意：
+#   - 平台容器用 GPU 需穿透 /dev/nvidia* + 在 dind 内装 nvidia-container-toolkit
+#   - GPU 整卡透传（4090 无法切分），穿透卡0；如需卡1 改 /dev/nvidia1
+
+name: portainer
+
+services:
+  # ---- 管理平面：Portainer Server（不挂宿主 socket）----
+  portainer:
+    container_name: portainer
+    image: portainer/portainer-ce:lts
+    restart: always
+    command:
+      - --admin-password-file=/run/secrets/portainer_admin_password
+    secrets:
+      - portainer_admin_password
+    volumes:
+      - portainer_data:/data
+    ports:
+      - "9443:9443"
+    environment:
+      - TZ=Asia/Shanghai
+    networks:
+      - portainer-net
+    # 注意：portainer-ce:lts 镜像无 /bin/sh，不能使用 CMD-SHELL 健康检查；
+    # 就绪检测由 auto-register 脚本内部轮询 API 完成
+
+  # ---- 平台隔离 Docker 环境（第2层 dockerd + GPU 卡0 穿透）----
+  dind-platform:
+    container_name: dind-platform
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # 构建时用 host 网络：容器网桥出网受限，apk 安装 toolkit 需走宿主网络
+      network: host
+    restart: always
+    privileged: true
+    environment:
+      - DOCKER_TLS_CERTDIR=/certs
+      - TZ=Asia/Shanghai
+    volumes:
+      - dind-platform-data:/var/lib/docker
+      # ===== nvidia-container-toolkit 宿主挂载方案（离线，不依赖 apk/外网）=====
+      # 宿主已装 toolkit 1.19.1 + NVIDIA 驱动 590.48.01，全部以只读挂载进 dind：
+      #   1. 驱动库（libcuda/libnvidia-* + libnvidia-container.so）→ hook 挂进最终容器
+      #   2. glibc 运行库（/lib/x86_64-linux-gnu、/lib64）→ toolkit 二进制运行依赖
+      #   3. toolkit 二进制（nvidia-ctk/runtime/hook/cli）→ 动态链接 glibc
+      #   4. 修正版 config.toml（禁 load-kmods/ldconfig，适配 dind musl 环境）
+      # 目标路径在 alpine 内原本不存在，不会遮蔽系统库；宿主升级驱动无需重建镜像
+      - /usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:ro
+      - /lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:ro
+      - /lib64:/lib64:ro
+      - /usr/bin/nvidia-smi:/usr/bin/nvidia-smi:ro
+      - /usr/bin/nvidia-ctk:/usr/bin/nvidia-ctk:ro
+      - /usr/bin/nvidia-container-runtime:/usr/bin/nvidia-container-runtime:ro
+      - /usr/bin/nvidia-container-runtime-hook:/usr/bin/nvidia-container-runtime-hook:ro
+      - /usr/bin/nvidia-container-cli:/usr/bin/nvidia-container-cli:ro
+      # glibc 库缓存：nvidia-container-cli 探测驱动库需要读 /etc/ld.so.cache
+      - /etc/ld.so.cache:/etc/ld.so.cache:ro
+      # glibc 版 ldconfig（static-pie）：CLI 挂载库后在容器内跑它生成 .so 软链
+      - /sbin/ldconfig.real:/sbin/ldconfig.real:ro
+      - ./nvidia/config.toml:/etc/nvidia-container-runtime/config.toml:ro
+    # GPU 卡0 穿透（如需卡1 改为 /dev/nvidia1）
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-modeset:/dev/nvidia-modeset
+      - /dev/nvidia-uvm:/dev/nvidia-uvm
+      - /dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools
+    # 资源上限（顶层属性，非 swarm 下真正生效；dind 及内部容器共用此上限）
+    cpus: "16"
+    mem_limit: 32g
+    networks:
+      - portainer-net
+    healthcheck:
+      test: ["CMD", "docker", "info"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ---- 外部访问转发：socat 容器把外部流量送进 dind（方案A，不动 dind）----
+  # 架构: 外部访问 10.8.0.8:<listen> → Docker NAT → port-forward 容器
+  #       → socat 转发 → dind-platform:<port>（dind 内 docker-proxy 在收）
+  # 加新服务: 在 PF_RULES 加一条规则，重启本容器即可，不用重启 dind
+  port-forward:
+    container_name: port-forward
+    build:
+      context: .
+      dockerfile: Dockerfile.port-forward
+      # 容器网桥出网受限，apk 装 socat 需走宿主网络
+      network: host
+    restart: always
+    environment:
+      # 规则: 监听端口:目标主机:目标端口（逗号分隔多条）
+      # 目标主机用 compose 网络名 dind-platform，不依赖容器 IP 变化
+      - PF_RULES=8088:dind-platform:8080
+    ports:
+      - "8088:8088"
+    networks:
+      - portainer-net
+    depends_on:
+      dind-platform:
+        condition: service_healthy
+
+  # ---- 自动注册：将 dind 环境注册到 Portainer（一次性任务，失败自动重试）----
+  auto-register:
+    container_name: portainer-auto-register
+    image: curlimages/curl:latest
+    restart: on-failure:3
+    depends_on:
+      portainer:
+        condition: service_started
+      dind-platform:
+        condition: service_started
+    secrets:
+      - portainer_admin_password
+    volumes:
+      - ./auto-register.sh:/auto-register.sh:ro
+    environment:
+      - PORTAINER_URL=https://portainer:9443
+      - PORTAINER_PASSWORD_FILE=/run/secrets/portainer_admin_password
+      - AGENT_ENDPOINT=dind-platform:9001
+      - AGENT_NAME=dind-platform
+    entrypoint: ["/bin/sh", "/auto-register.sh"]
+    networks:
+      - portainer-net
+
+networks:
+  portainer-net:
+    name: portainer-net
+    driver: bridge
+
+secrets:
+  portainer_admin_password:
+    file: ./portainer_admin_password.txt
+
+volumes:
+  portainer_data:
+    name: portainer_data
+  dind-platform-data:
+    name: dind-platform-data
