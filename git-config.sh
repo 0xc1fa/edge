@@ -178,6 +178,20 @@ else
   echo "  远程已关联: $REMOTE_URL"
 fi
 
+# [3.5/3] 首次推送检查: 远端是否已存在内容
+echo
+if REMOTE_HEAD=$(git ls-remote origin HEAD 2>/dev/null); then
+  if [ -n "$REMOTE_HEAD" ]; then
+    echo "  [!] 远端仓库已有提交"
+    echo "      若为初始化时勾选了 README/.gitignore, 首次推送会因"
+    echo "      历史不相关被拒 (unrelated histories), 处理见 docs/note-git.md"
+  else
+    echo "  [ok] 远端为空仓库, 可直接首次推送"
+  fi
+else
+  echo "  [i] 未能连接远端(离线?), 推送时如被拒见 docs/note-git.md"
+fi
+
 # 敏感文件保护
 f=".gitignore"; [ -f "$f" ] || touch "$f"
 for rule in "portainer/portainer_admin_password.txt" "portainer/agent.tar"; do
