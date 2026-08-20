@@ -1,5 +1,105 @@
 # 容器化 多租户 资源隔离
 
+## 📦 自助运行 compose 数据库管理服务 260820
+
+```
+test 要用新镜像建应用，dind 内 docker pull 直接 TCP 悬挂超时
+    │
+    │  ← 用户问"dind 为什么没有外网 如果其他成员使用 test 用户建立自己的应用是什么流程"
+    ▼
+分层排查：宿主 curl registry 通 / dind ping IP 通 / DNS 解析返回 198.18.0.170
+    │
+    │  ← 198.18.0.170 是 fake-ip（透明代理特征），容器流量不在代理规则内
+    ▼
+根因：宿主透明代理只对宿主本机进程（OUTPUT 链）生效，
+      dind 容器流量走 FORWARD 链被悬挂 → dind 永远无法直连外网
+    │
+    │  ← 用户提出"解决 Test 用户自助进行镜像管理"
+    ▼
+方案A：宿主 pull→save→load 离线导入（每个新镜像都要管理员介入）✗ 不自助
+方案B：双 registry：5000 私有仓库不动 + 新增 6000 proxy-cache（Docker Hub 代理）✓
+    │
+    │  ← 用户问"devops 已有5000 端口的 registry-proxy 是否有必要再单独开一个"
+    ▼
+纠正前提：5000 是纯私有仓库（solar-server，无 proxy 配置），不是 proxy；
+registry:2 私有存储与 proxy 模式互斥（proxy 模式官方禁 push）→ 必须两个实例
+    │
+    ▼
+6000 proxy-cache 落地：host 网络（容器网桥出网受限）+ dind insecure-registries 信任
+    │
+    │  ← 用户依次质疑"缓存删了为何还快"（两层缓存）、"是否该放 compose"（统一管理）
+    ▼
+registry-mirrors 短名拉取 + proxy 收编 compose + 样例工程 adminer+postgres 验证通过
+```
+
+**dind 无外网根因（三层证据）：**
+
+
+| 层           | 现象                                | 结论                     |
+| ------------ | ----------------------------------- | ------------------------ |
+| 宿主进程     | curl registry-1.docker.io 401（通） | 代理对 OUTPUT 生效       |
+| dind ping IP | 223.5.5.5 通                        | 纯 IP 路由正常           |
+| dind DNS     | 返回 198.18.0.170                   | fake-ip，透明代理特征    |
+| dind pull    | TCP 握手悬挂                        | FORWARD 链不在代理规则内 |
+
+**镜像供给三条路对比（决策依据）：**
+
+
+| 方案               | 管理员介入       | test 自助 | 私有镜像  |
+| ------------------ | ---------------- | --------- | --------- |
+| save/load 离线导入 | 每个新镜像都要   | ✗        | 兼容      |
+| 5000 私有仓库      | push 需管理员/CI | 拉取自助  | ✓        |
+| 6000 proxy-cache   | 首次回源自动     | 完全自助  | 不能 push |
+
+**registry:2 双实例必须分离（5000 vs 6000）：**
+
+- 5000 `infra-registry`：私有存储模式，可 push（存 solar-server）
+- 6000 `registry-proxy`：proxy 模式（`proxy.remoteurl=https://registry-1.docker.io`），**官方 pull-through cache 不接受上传** → 合并会断私有镜像流 + 缓存与私有数据混库互毁
+
+**两层缓存（用户踩坑点："缓存删了为什么还快"）：**
+
+```
+缓存层②                       缓存层①
+Docker Hub ──▶ 6000 proxy ──▶ dind 本地镜像库 ──▶ 容器
+               registry-proxy-data 卷    /var/lib/docker
+               没删（用户误以为删了）      用户 rmi 删的是这层
+```
+
+- 证据：`docker logs registry-proxy` 部署瞬间 19 条 `GET /v2/library/adminer/blobs/...` 200，响应 `4-8ms` = 命中层②缓存秒回；`written=562110` 字节确实传输 → "重新下载了，只是走内网所以快"
+- 想验证真回源：清 `registry-proxy-data` 卷 → 重新拉起 registry-proxy（约 400MB 重新回源下载）
+
+**关键工程决策：**
+
+- **registry-proxy 必须 host 网络**：容器网桥出网受限（回源 Docker Hub 失败），host 模式流量走宿主代理；config 中 `http.addr` 相应改 `:6000`
+- **dind daemon.json 演进**：初版仅 nvidia runtime → 加 `insecure-registries:[5000,6000]` → 加 `registry-mirrors:["http://10.8.0.8:6000"]`（短名自助）；nvidia-ctk runtime configure 会 **merge 保留** insecure-registries 字段（Dockerfile COPY daemon.json 预置）
+- **短名 vs 完整地址**：官方镜像写 `nginx:alpine`（走 mirror）；带前缀镜像如 `bitnami/xx` mirror 不覆盖，写 `10.8.0.8:6000/library/xx`（insecure-registries 已信任）
+- **port-forward 加新服务**：PF_RULES 加规则 + 重启本容器即可，不用重启 dind；`depends_on` 用 `condition: service_healthy`
+
+**踩坑记录（按提问顺序）：**
+
+1. 页面部署"没重新拉取" → 镜像已在 dind 本地，直接复用秒起；**删容器不删镜像**，Portainer 用 `Unused` 标记无引用镜像
+2. 页面 Containers 显示空但删镜像报"image is being used by running container" → **UI 缓存未刷新**，agent 实际能看到容器（`docker exec dind-platform docker ps` 为准）
+3. `docker rm -f` 后镜像还在 → 正常，rm 只删容器，镜像需单独 rmi
+4. 一个镜像显示两个名字（`10.8.0.8:6000/library/adminer:4` + `adminer:4`）→ 同一镜像两个 tag（完整地址拉过 + 短名 mirror 拉过），删除时一起消失
+5. 无 tag 镜像 `f0ba77f796e5`（62.4MB）→ `demo-nginx` 容器的 dangling 镜像（nginx:alpine tag 被删但容器在用，Docker 保留层）→ 删容器后 `docker image prune -f` 回收 62.36MB
+6. compose 中 `port-forward` 曾有两个 `depends_on` 键 → 后者覆盖前者，已合并为 `condition: service_healthy`
+7. `portainer-auto-register` 停止（Exited 0）→ **设计行为**：一次性注册任务成功退出，失败才 `on-failure:3` 重试，非残存物
+8. `docker exec dind-platform sh -c 'cat > file' <<EOF` 写入空文件 → **docker exec 需加 `-i`** 才转发 stdin
+9. 页面直接删 stack 容器即消失 → 但镜像不随 stack 删除，需手动 rmi
+
+**样例工程（test 自助验证用例，双入口可验证）：**
+
+- `/root/edge/portainer/examples/demo-app/docker-compose.yml`：adminer:4（管理页面 8091）+ postgres:16-alpine（数据库 5433）
+- 验证：管理页面 `http://10.8.0.8:8091`（app/app123/appdb）；PG 客户端直连 `10.8.0.8:5433`
+- ⚠️ 样例工程当前不在运行：`/opt/demo-app` 写在 dind 可写层，dind 重建后丢失，需重新写入再 `docker compose up -d`
+
+**本次收尾动作：**
+
+- demo-nginx 遗留容器已删 + 8088 转发规则移除（PF_RULES 只剩 8091/5433）
+- dind 内仅剩 `portainer/agent:lts`，dangling 全部清理
+
+---
+
 ## 🎭 环境授权与宿主机风险权衡 260820
 
 ```
@@ -515,19 +615,5 @@ Portainer 架构理解
 - **agent 模式（本方案）**：每台被管机器跑一个轻量 `portainer-agent` 容器，Server 通过它远程控制——本项目 Portainer Server 连的是 **dind 内的 agent**，宿主 socket 完全不挂。
 - 存储：配置存本地 BoltDB（`/data`），不依赖外部数据库。
 - 对比 Rancher：Rancher 自带整层 K8s（apiserver/etcd/containerd/fleet/webhook...几十个组件），Portainer **只有 1 个管理容器 + 直接控制 docker.sock**，轻两个量级。
-
----
-
----
-
----
-
----
-
----
-
----
-
----
 
 ---

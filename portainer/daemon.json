@@ -1,0 +1,15 @@
+{
+  "insecure-registries": [
+    "10.8.0.8:5000",
+    "10.8.0.8:6000"
+  ],
+  "registry-mirrors": [
+    "http://10.8.0.8:6000"
+  ],
+  "runtimes": {
+    "nvidia": {
+      "args": [],
+      "path": "nvidia-container-runtime"
+    }
+  }
+}

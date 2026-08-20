@@ -3,7 +3,13 @@
 # 架构：
 #   宿主 Docker ── 第1层
 #     ├─ portainer(Server)：不挂宿主 socket，只通过 Agent 连 dind → 宿主容器不可见
+#     ├─ registry-proxy：Docker Hub 代理缓存，dind 公共镜像自助拉取的唯一通道
 #     └─ dind-platform：第2层 dockerd + GPU 卡0 穿透 → Portainer 的唯一环境
+#
+# 镜像供给链路：
+#   Docker Hub ──(宿主代理)──▶ registry-proxy(10.8.0.8:6000) ──▶ dind 内 test 自助拉取
+#   私有镜像 solar-server 等 ──▶ 10.8.0.8:5000（deAI infra，不在本 compose）
+#   注意：dind 无外网（宿主透明代理只对本机进程生效），公共镜像必须经 registry-proxy
 #
 # 改进：
 #   - dind 内自动启动 portainer-agent（镜像预置进镜像，不依赖 dind 外网）
@@ -38,6 +44,20 @@ services:
       - portainer-net
     # 注意：portainer-ce:lts 镜像无 /bin/sh，不能使用 CMD-SHELL 健康检查；
     # 就绪检测由 auto-register 脚本内部轮询 API 完成
+
+  # ---- 公共镜像代理缓存：Docker Hub 代理，dind 自助拉取公共镜像的通道 ----
+  # 必须 host 网络：宿主透明代理只对宿主进程生效，容器网桥出网受限（回源失败），
+  # host 模式下 registry 直接监听宿主 6000（见 registry-proxy-config.yml http.addr）
+  registry-proxy:
+    container_name: registry-proxy
+    image: registry:2
+    restart: always
+    network_mode: host
+    volumes:
+      - registry-proxy-data:/var/lib/registry
+      - ./registry-proxy-config.yml:/etc/docker/registry/config.yml:ro
+    environment:
+      - TZ=Asia/Shanghai
 
   # ---- 平台隔离 Docker 环境（第2层 dockerd + GPU 卡0 穿透）----
   dind-platform:
@@ -108,14 +128,16 @@ services:
     environment:
       # 规则: 监听端口:目标主机:目标端口（逗号分隔多条）
       # 目标主机用 compose 网络名 dind-platform，不依赖容器 IP 变化
-      - PF_RULES=8088:dind-platform:8080
+      # 8091 → 样例工程 adminer；5433 → 样例工程 postgres
+      - PF_RULES=8091:dind-platform:8091,5433:dind-platform:5433
     ports:
-      - "8088:8088"
-    networks:
-      - portainer-net
+      - "8091:8091"
+      - "5433:5433"
     depends_on:
       dind-platform:
         condition: service_healthy
+    networks:
+      - portainer-net
 
   # ---- 自动注册：将 dind 环境注册到 Portainer（一次性任务，失败自动重试）----
   auto-register:
@@ -154,3 +176,5 @@ volumes:
     name: portainer_data
   dind-platform-data:
     name: dind-platform-data
+  registry-proxy-data:
+    name: registry-proxy-data

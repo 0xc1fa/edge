@@ -1,0 +1,20 @@
+# registry-proxy：Docker Hub 代理缓存（为 dind 提供公共镜像自助拉取）
+#
+# 原理：dind 无外网，本 registry 有外网。dind 拉取公共镜像时
+#       经本 registry 回源 Docker Hub 并缓存，后续拉取命中缓存。
+# 注意：只代理公共镜像（library 命名空间），不能替代 5000 私有 registry。
+version: 0.1
+log:
+  fields:
+    service: registry-proxy
+storage:
+  cache:
+    blobdescriptor: inmemory
+  filesystem:
+    rootdirectory: /var/lib/registry
+proxy:
+  remoteurl: https://registry-1.docker.io
+http:
+  addr: :6000
+  headers:
+    X-Content-Type-Options: [nosniff]

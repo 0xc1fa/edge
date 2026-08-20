@@ -11,6 +11,9 @@
 FROM docker:28-dind
 
 COPY agent.tar /agent.tar
+# 预置 daemon.json：insecure-registries 信任内网 registry(5000/6000) + nvidia runtime
+# nvidia-ctk runtime configure 会 merge 保留 insecure-registries 字段
+COPY daemon.json /etc/docker/daemon.json
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
