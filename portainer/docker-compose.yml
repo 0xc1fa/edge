@@ -128,11 +128,19 @@ services:
     environment:
       # 规则: 监听端口:目标主机:目标端口（逗号分隔多条）
       # 目标主机用 compose 网络名 dind-platform，不依赖容器 IP 变化
-      # 8091 → 样例工程 adminer；5433 → 样例工程 postgres
-      - PF_RULES=8091:dind-platform:8091,5433:dind-platform:5433
+      # 8001 → 样例工程 adminer（demo-app 在 dind 内已改为监听 8001，目标端口同为 8001）
+      # 5433 → 样例工程 postgres；8002/8003/8004 → 其他团队应用部署预留（连续端口）
+      # 3306 → MySQL 直连预留；5432 → PostgreSQL 直连预留
+      # 新增服务：在此追加"监听端口:dind-platform:端口"，并在下方 ports 同步放行
+      - PF_RULES=8001:dind-platform:8001,5433:dind-platform:5433,8002:dind-platform:8002,8003:dind-platform:8003,8004:dind-platform:8004,3306:dind-platform:3306,5432:dind-platform:5432
     ports:
-      - "8091:8091"
+      - "8001:8001"
       - "5433:5433"
+      - "8002:8002"
+      - "8003:8003"
+      - "8004:8004"
+      - "3306:3306"
+      - "5432:5432"
     depends_on:
       dind-platform:
         condition: service_healthy
