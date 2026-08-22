@@ -1,0 +1,112 @@
+# =============================================================================
+# vLLM 多模型推理服务 (双 RTX 4090)
+# =============================================================================
+# 框架/架构/快速开始见 README.md；踩坑记录见 note.md。
+#
+# 通过 Docker Compose profiles 管理多个模型,同一时间只运行一个:
+#   - coder   → Qwen3-Coder-30B MoE (AWQ, ModelScope)
+#   - qwen38  → Qwen3.8-27B 稠密    (AWQ, HuggingFace)
+#
+# 前提:
+#   1. 模型已下载到 /root/edge/models (运行 bash download-model.sh <模型名>)
+#   2. 镜像已拉取 (未成功则运行 bash retry-pull.sh)
+#
+# 用法:
+#   启动 Coder:    docker compose --profile coder  up -d
+#   启动 Qwen3.8:  docker compose --profile qwen38 up -d
+#   切换模型:      docker compose --profile coder down && docker compose --profile <目标> up -d
+#   停止:          docker compose --profile coder --profile qwen38 down
+# =============================================================================
+
+# ---- 公共配置锚点 ----
+x-vllm-common: &vllm-common
+  image: vllm/vllm-openai:v0.26.0 # vLLM OpenAI 兼容推理服务
+  pull_policy: never # 禁止 compose 自动拉取,统一由 retry-pull.sh 负责
+  restart: unless-stopped
+  ports:
+    - "18000:8000" # 宿主机18000 → 容器8000 (vLLM API)
+  environment:
+    HF_XET_HIGH_PERFORMANCE: "1" # 启用 Xet 高速传输(如启动时需联网拉取)
+    HF_HOME: "/models/.cache/huggingface" # HF 缓存放模型卷内
+  volumes:
+    - /root/edge/models:/models:ro # 模型统一目录,只读挂载
+  dns:
+    - 114.114.114.114
+    - 223.5.5.5
+  dns_opt:
+    - attempts:3
+    - timeout:2
+    - ndots:0
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all # 使用全部GPU(双4090)
+            capabilities: [ gpu ]
+
+services:
+  # ---------- 模型 1: Qwen3-Coder-30B MoE ----------
+  vllm-coder:
+    <<: *vllm-common
+    container_name: vllm-coder
+    profiles: [ "coder" ]
+    command:
+      - --model=/models/Qwen3-Coder-30B-A3B-Instruct-AWQ # 模型权重路径
+      - --tensor-parallel-size=2 # 双卡张量并行
+      - --max-model-len=65536 # 最大上下文 64K
+      - --gpu-memory-utilization=0.80 # 显存利用率,留20%给CUDA context/矿机容器(kryptex forge 绑定 GPU0)
+      - --dtype=auto # 自动匹配模型量化格式(AWQ)
+      - --served-model-name=qwen3-coder-30b # 对外模型名,Open WebUI用此名选择
+      - --enable-prefix-caching # 前缀缓存,多轮对话更快
+      - --max-num-seqs=4 # 最大并发序列数
+      # 工具调用支持(Open WebUI 会发 tools 参数,不加会报错):
+      #   auto tool choice requires --enable-auto-tool-choice and --tool-call-parser
+      - --enable-auto-tool-choice # 启用自动工具选择
+      - --tool-call-parser=qwen3_coder # Qwen3-Coder 专用工具解析器
+
+  # ---------- 模型 2: Qwen3.8-27B 稠密 ----------
+  vllm-qwen38:
+    <<: *vllm-common
+    container_name: vllm-qwen38
+    profiles: [ "qwen38" ]
+    command:
+      - --model=/models/Qwen3.8-27B-W4A16-AWQ # 模型权重路径
+      - --tensor-parallel-size=2 # 双卡张量并行
+      - --max-model-len=32768 # 最大上下文 32K(稠密模型显存更紧)
+      - --gpu-memory-utilization=0.90 # 显存利用率,留10%给CUDA context
+      - --dtype=auto # 自动匹配量化格式(compressed-tensors)
+      - --served-model-name=qwen38-27b # 对外模型名
+      - --enable-prefix-caching # 前缀缓存
+      - --max-num-seqs=4 # 最大并发序列数
+      - --enable-auto-tool-choice # 启用自动工具选择
+      - --tool-call-parser=qwen3_xml # vLLM 0.26.0 起 qwen3 解析器已改名为 qwen3_xml,用旧名会启动崩溃
+
+  # ---------- Open WebUI ----------
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:v0.10.2
+    container_name: vllm-webui
+    restart: unless-stopped
+    network_mode: host # host网络,直接占用宿主8080
+    # 不加 depends_on: 无 profile 的 service 不能依赖有 profile 的 service,
+    # 且两个模型共用 18000 端口,WebUI 通过 API 地址连接,与 service 名字无关。
+    environment:
+      PORT: "8080" # 不同时运行,沿用8080
+      # vLLM 是 OpenAI 协议,必须用 OpenAI 兼容连接。注意:新版 Open WebUI
+      # 用【复数】变量 OPENAI_API_BASE_URLS/OPENAI_API_KEYS,单数变量不生效。
+      # 不能用 OLLAMA_BASE_URL 指向 vLLM,否则会走 Ollama 协议(/api/tags)导致模型列表为空。
+      OPENAI_API_BASE_URLS: "http://127.0.0.1:18000/v1"
+      OPENAI_API_KEYS: "dummy" # vLLM 不校验 key,占位即可
+      WEBUI_AUTH: "False" # 关闭登录
+      # RAG 嵌入: 需单独提供嵌入服务(见 note.md)。此处先不依赖 Ollama
+      OFFLINE_MODE: "true" # 禁止启动时从HF下载任何模型
+      HTTPS_PROXY: "http://127.0.0.1:7890"
+      HTTP_PROXY: "http://127.0.0.1:7890"
+      NO_PROXY: "127.0.0.1,localhost,vllm,open-webui,huggingface.co,*.huggingface.co"
+    volumes:
+      - openwebui_data:/app/backend/data
+      - webui_hf_cache:/app/backend/data/cache/huggingface
+
+volumes:
+  openwebui_data:
+  webui_hf_cache:

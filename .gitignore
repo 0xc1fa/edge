@@ -15,3 +15,6 @@ portainer/agent.tar
 *.log
 *.tmp
 .DS_Store
+
+# ---- 模型 ----
+models/
