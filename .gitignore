@@ -23,3 +23,6 @@ models/*/*.safetensors
 
 # ---- 评测结果（benchmark 脚本输出到 logs/benchmark-*）----
 logs/benchmark-*/
+
+# ---- 凭据（项目级 git 凭据文件, 含 token, 禁止上传）----
+.git-credentials
