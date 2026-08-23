@@ -88,7 +88,30 @@ git remote set-url origin 'https://0xc1fa@github.com/0xc1fa/edge.git'   # 显式
 - 修两个 bug: 原 `cd $SCRIPT_DIR` 导致脚本只作用于自身目录(曾在测试中污染 edge 配置); URL 贪婪匹配产生 `edge.git.git`
 - 敏感文件保护规则加 `.git-credentials`, 任何项目跑脚本都会自动忽略凭据文件
 
-> 卡点: VSCode 登录 token 不落 store 文件, 命令行免密 push 仍需生成 0xc1fa PAT(网页授权只覆盖 VSCode 侧)。
+**⑥ ④的配套坑: 凭据文件名必须与 remote 用户名一致**
+
+> push 报 `fatal: Authentication failed for 'https://github.com/0xc1fa/edge.git/'`, 而凭据明明配过。
+
+```
+[现象] push → Authentication failed（VSCode 命令行均如此）
+   │
+   ▼ 诊断: printf "protocol=https\nhost=github.com\nusername=0xc1fa\n\n" | git credential fill
+        → 无凭据返回（No such device and address, 无 TTY 交互 = store 匹配失败）
+   │
+[根因] remote URL 带用户名 https://0xc1fa@github.com/...
+   │     而 .git-credentials 里是 https://26***:…@github.com（网页授权写的是 UID）
+   │     store 对带用户名请求按 用户名@host 精确匹配 → 两边不一致 → 匹配失败
+   ▼
+[修复] 凭据文件用户名 UID → 登录名 0xc1fa, 与 remote URL 对齐
+   │
+   ▼ 验证: credential fill 返回密码 + git ls-remote 认证通过
+```
+
+- **配套要求**: ④"remote URL 带用户名让 store 精确匹配"成立的前提, 是凭据文件里的用户名与 remote 完全一致; 网页授权写的是 **UID**, 手动建文件又常写**登录名** —— 两处来源天然不一致
+- **诊断金句**: `git credential fill` 无返回 = 凭据没匹配上, 先查用户名, 别怀疑 token 有效性
+- 用户名在 URL 与凭据文件两处都对上后, store 按 host 即可命中, 与 token 本身无关
+
+> 卡点: VSCode 登录 token 不落 store 文件; 网页授权的 `gho_`（OAuth）token 命令行可用但有过期风险, 长期稳定仍需 0xc1fa 的 `ghp_` PAT。`setup_credential` 建文件时写的用户名同样需与 remote 保持一致, 待复核。
 
 ## 📦 仓库迁移  260823
 
