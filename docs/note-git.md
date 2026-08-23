@@ -1,5 +1,26 @@
 # Git
 
+## 📦 仓库迁移  260823
+
+```
+a6b0x/edge ──Transfer ownership──▶ 0xc1fa/edge
+    │                                 │
+    │  Settings → Danger Zone         │  历史/commit/分支全带走
+    │  → Transfer（仅 owner 可见）      ▼
+    └──── 对方通知里 Accept ──────▶ 迁移完成
+```
+
+**操作要点:**
+
+1. **Settings 菜单只对 owner/admin 显示**: 浏览器登录的账号不是仓库 owner 就看不到 Settings, 先确认右上角登录身份
+2. **转移时 GitHub 连内容一起搬**: 全部提交迁移到新账号, 本地不用重推
+3. **更新本地 remote**: `git remote set-url origin https://github.com/<新账号>/edge.git`
+4. **push 显示 up-to-date 不奇怪**: 迁移时内容已随仓库搬走, 本地/远程 HEAD 一致 → 无数据可传 → 不触发认证。下次有新提交 push 才需要新账号的 token（HTTPS 需新账号 PAT，`credential.helper store` 可免密）
+
+> 迁移期间 git 网络问题（代理配置 / HTTP2 framing layer）见 `note-base.md`「TUN 透明代理 vs 端口代理」「git push 报 HTTP2 framing layer 错误排障」两节。
+
+---
+
 ## 🧹 Github 重建仓库  260820
 
 ```
