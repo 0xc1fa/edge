@@ -83,7 +83,7 @@ docker compose up -d port-forward
 cd /root/edge/infer/vllm
 
 # ① 准备（pull_policy: never，须先拉镜像再下模型）
-bash pull-engine.sh                       # 引擎镜像（自动重试断点续传）
+bash pull-engine.sh                       # 引擎镜像 v0.27.1（国内源直连，见 docs/note-vllm.md 260823）
 bash download-model.sh coder              # ~16.8GB，ModelScope 国内源
 bash download-model.sh qwen38             # ~19.6GB，HuggingFace 走代理
 
