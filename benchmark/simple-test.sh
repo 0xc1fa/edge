@@ -13,7 +13,7 @@
 #   bash simple-test.sh qwen3-coder-30b 256   # 先切换 profile
 #
 # 指标: TTFT（首个内容 token 延迟）、总耗时、输出 token 数、tok/s
-# 结果: 终端汇总 + results/<时间戳>/case-*.jsonl 明细
+# 结果: 终端汇总 + ../logs/benchmark-<时间戳>/case-*.jsonl 明细
 # =============================================================================
 set -euo pipefail
 
@@ -30,8 +30,9 @@ if ! curl -sf -m 5 "$BASE_URL/models" >/dev/null; then
 fi
 
 # ② 结果目录（精确到秒，避免同分钟多次运行互相覆盖）
+# 统一写到 ../logs/ 下，前缀 benchmark-，已被 .gitignore 忽略
 TS=$(date +%y%m%d-%H%M%S)
-RESULT_DIR="$SCRIPT_DIR/results/$TS"
+RESULT_DIR="$SCRIPT_DIR/../logs/benchmark-$TS"
 mkdir -p "$RESULT_DIR"
 
 echo "模型: $MODEL | max_tokens: $MAX_TOKENS | $(date '+%F %T')"

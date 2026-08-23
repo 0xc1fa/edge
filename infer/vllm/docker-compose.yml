@@ -4,25 +4,30 @@
 # 框架/架构/快速开始见 README.md；踩坑记录见 note.md。
 #
 # 通过 Docker Compose profiles 管理多个模型,同一时间只运行一个:
-#   - coder   → Qwen3-Coder-30B MoE (AWQ, ModelScope)
-#   - qwen38  → Qwen3.8-27B 稠密    (AWQ, HuggingFace)
+#   - coder      → Qwen3-Coder-30B MoE (AWQ, ModelScope)
+#   - qwen38     → Qwen3.8-27B 稠密 v0.27.1 无 MTP 对照 (AWQ, HuggingFace)
+#   - qwen38-mtp → Qwen3.8-27B 稠密 v0.27.1 + MTP 推测解码(优化版)
+#
+# qwen38 分两个 profile 便于对照: 同一模型,同一引擎 v0.27.1,仅推测解码开/关
 #
 # 前提:
 #   1. 模型已下载到 /root/edge/models (运行 bash download-model.sh <模型名>)
 #   2. 镜像已拉取 (未成功则运行 bash retry-pull.sh)
 #
 # 用法:
-#   启动 Coder:    docker compose --profile coder  up -d
-#   启动 Qwen3.8:  docker compose --profile qwen38 up -d
-#   切换模型:      docker compose --profile coder down && docker compose --profile <目标> up -d
-#   停止:          docker compose --profile coder --profile qwen38 down
+#   启动 Coder:        docker compose --profile coder      up -d
+#   启动 Qwen3.8 对照: docker compose --profile qwen38     up -d
+#   启动 Qwen3.8 MTP:  docker compose --profile qwen38-mtp up -d
+#   切换模型:          docker compose --profile <当前> down && docker compose --profile <目标> up -d
+#   停止:              docker compose --profile coder --profile qwen38 --profile qwen38-mtp down
 # =============================================================================
 
 # ---- 公共配置锚点 ----
 x-vllm-common: &vllm-common
-  image: vllm/vllm-openai:v0.27.1 # vLLM OpenAI 兼容推理服务(0.27.1 起支持 Qwen3.8 MTP 投机解码)
+  image: vllm/vllm-openai:v0.27.1 # vLLM OpenAI 兼容推理服务(0.27.1 起支持 Qwen3.8 MTP 推测解码)
   pull_policy: never # 禁止 compose 自动拉取,统一由 retry-pull.sh 负责
   restart: unless-stopped
+  shm_size: 2g # v0.27.1+ MTP/多进程 shm_broadcast 需共享内存,默认 64MiB 不够 → Insufficient space in /dev/shm
   ports:
     - "18000:8000" # 宿主机18000 → 容器8000 (vLLM API)
   environment:
@@ -59,7 +64,7 @@ services:
       - --dtype=auto # 自动匹配模型量化格式(AWQ)
       - --served-model-name=qwen3-coder-30b # 对外模型名,Open WebUI用此名选择
       - --enable-prefix-caching # 前缀缓存,多轮对话更快
-      - --kv-cache-dtype=fp8 # FP8 KV cache:显存占用减半→KV容量翻倍,读写带宽减半→与矿工争带宽时解码更快
+      - --kv-cache-dtype=fp8 # FP8 KV cache:显存占用减半→KV容量翻倍,读写带宽减半→与其他 GPU 任务争带宽时解码更快
       - --max-num-seqs=4 # 最大并发序列数
       - --max-num-batched-tokens=8192 # prefill 批处理上限,长 prompt 首字更快(MoE 激活 3B,显存压力小)
       # 工具调用支持(Open WebUI 会发 tools 参数,不加会报错):
@@ -67,11 +72,14 @@ services:
       - --enable-auto-tool-choice # 启用自动工具选择
       - --tool-call-parser=qwen3_coder # Qwen3-Coder 专用工具解析器
 
-  # ---------- 模型 2: Qwen3.8-27B 稠密 ----------
+  # ---------- 模型 2a: Qwen3.8-27B 对照 (v0.27.1, 无 MTP) ----------
+  # 对照基线: 同一引擎 0.27.1, 仅关闭 MTP 推测解码,精确量化 MTP 的净收益。
+  # (v0.26.0 历史基线见报告: tok/s 24.1 / TTFT 399ms)
   vllm-qwen38:
     <<: *vllm-common
     container_name: vllm-qwen38
     profiles: [ "qwen38" ]
+    image: vllm/vllm-openai:v0.27.1 # 覆盖锚点镜像,与 MTP 版同引擎(对照时排除版本差异)
     command:
       - --model=/models/Qwen3.8-27B-W4A16-AWQ # 模型权重路径
       - --tensor-parallel-size=2 # 双卡张量并行
@@ -80,13 +88,43 @@ services:
       - --dtype=auto # 自动匹配量化格式(compressed-tensors)
       - --served-model-name=qwen38-27b # 对外模型名
       - --enable-prefix-caching # 前缀缓存
-      - --kv-cache-dtype=fp8 # FP8 KV cache:容量翻倍+带宽减半,与矿工共存时提升解码速度
+      - --kv-cache-dtype=fp8 # FP8 KV cache:容量翻倍+带宽减半,与后台计算任务共存时提升解码速度
       - --max-num-seqs=4 # 最大并发序列数
-      - --max-num-batched-tokens=4096 # prefill 批处理上限,长 prompt 首字更快(27B 稠密,取保守值防显存爆)
+      - --max-num-batched-tokens=12288 # 与 MTP 版一致,排除批处理上限差异(对照无 MTP 时无需槽位余量)
       - --enable-auto-tool-choice # 启用自动工具选择
       - --tool-call-parser=qwen3_xml # vLLM 0.26.0 起 qwen3 解析器已改名为 qwen3_xml,用旧名会启动崩溃
-      # MTP 投机解码(需 vLLM ≥0.27.1 + 模型自带 MTP 头):
-      #   Qwen3.8-27B 官方自带 model-mtp.safetensors,单次前向验证多 token,双4090实测 +39%
+
+  # ---------- 模型 2b: Qwen3.8-27B MTP (v0.27.1 + 推测解码) ----------
+  # 优化版: MTP 推测解码 + 调优参数。MTP 需 vLLM ≥0.27.1 与模型自带 MTP 头。
+  vllm-qwen38-mtp:
+    <<: *vllm-common
+    container_name: vllm-qwen38-mtp
+    profiles: [ "qwen38-mtp" ]
+    command:
+      - --model=/models/Qwen3.8-27B-W4A16-AWQ # 模型权重路径
+      - --tensor-parallel-size=2 # 双卡张量并行
+      - --max-model-len=32768 # 最大上下文 32K(稠密模型显存更紧)
+      - --gpu-memory-utilization=0.90 # 显存利用率,留10%给CUDA context
+      - --dtype=auto # 自动匹配量化格式(compressed-tensors)
+      - --served-model-name=qwen38-27b # 对外模型名
+      - --enable-prefix-caching # 前缀缓存
+      - --kv-cache-dtype=fp8 # FP8 KV cache:容量翻倍+带宽减半,与后台计算任务共存时提升解码速度
+      - --max-num-seqs=4 # 最大并发序列数
+      # prefill 批处理上限: 4096 → 12288 调优
+      #   vLLM 源码 vllm/config/vllm.py _set_max_num_scheduled_tokens:
+      #   max_num_scheduled_tokens = max_num_batched_tokens - (n-1)*max_num_seqs
+      #   MTP(n=2,seqs=4) 下 delta=4, 4096-4=4092 < 8192 会告警
+      #   "may lead to suboptimal performance"(草稿槽位被挤压) → 提到 12288 消除
+      - --max-num-batched-tokens=12288
+      - --enable-auto-tool-choice # 启用自动工具选择
+      - --tool-call-parser=qwen3_xml # vLLM 0.26.0 起 qwen3 解析器已改名为 qwen3_xml,用旧名会启动崩溃
+      # MTP 推测解码(需 vLLM ≥0.27.1 + 模型自带 MTP 头):
+      #   Qwen3.8-27B 官方自带 model-mtp.safetensors,单次前向验证多 token
+      #   ── 260823 实测结论(后台算力满载环境下) ──
+      #   单请求串行:  +4% tok/s(24.1→25.0), TTFT -29%(262→186ms) ✅ 延迟收益
+      #   并发4请求:   n=2: -40%(36.8 vs 61.5) | n=1: -27%(45.2 vs 61.5) ❌ 负优化
+      #   官方文档佐证: 推测解码只适合"内存受限的低 QPS"负载,计算受限场景收益转负
+      #   → 推荐: 延迟敏感低并发用本 profile; 吞吐优先/高并发用 qwen38(无MTP)
       - --speculative-config={"method":"mtp","num_speculative_tokens":2}
 
   # ---------- Open WebUI ----------

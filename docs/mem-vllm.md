@@ -1,6 +1,6 @@
 # vLLM 推理服务
 
-基于 vLLM 的高性能 LLM 推理部署，双 RTX 4090，替代 Ollama 作为推理后端。当前引擎 **v0.27.1**（Qwen3.8 MTP 投机解码）。
+基于 vLLM 的高性能 LLM 推理部署，双 RTX 4090，替代 Ollama 作为推理后端。当前引擎 **v0.27.1**（Qwen3.8 MTP 推测解码）。
 
 通过 Docker Compose **profiles** 管理多个模型，同一时间只运行一个，按需切换。
 
@@ -55,7 +55,7 @@ models/                    # 模型权重统一目录（上级目录，只读挂
 {"method": "mtp", "num_speculative_tokens": 2}
 ```
 
-Qwen3.8 MTP 投机解码：单次前向验证多 token，零额外模型下载
+Qwen3.8 MTP 推测解码：单次前向验证多 token，零额外模型下载
 
 **`--kv-cache-dtype=fp8`**
 KV cache 显存减半 → 容量翻倍（506K tokens / 并发 15.4x），读写带宽减半

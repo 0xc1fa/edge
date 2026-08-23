@@ -16,5 +16,10 @@ portainer/agent.tar
 *.tmp
 .DS_Store
 
-# ---- 模型 ----
-models/
+# ---- 模型（仅忽略权重，放行配置/tokenizer/README/LICENSE 等）----
+models/*
+!models/*/
+models/*/*.safetensors
+
+# ---- 评测结果（benchmark 脚本输出到 logs/benchmark-*）----
+logs/benchmark-*/

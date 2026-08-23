@@ -1,5 +1,78 @@
-
 # 网络 代理 下载
+
+## ⚖️ TUN 透明代理 vs 端口代理 260823
+
+```text
+[git 流量出网 —— 两条路径对比]
+  │
+  ▼
+┌─ TUN 透明代理（路由器模式）─────────────────────────┐
+│  mihomo 创建虚拟网卡 + 改路由表，透明接管全部流量     │
+│  应用无感知、无需配置 → 全局生效                      │
+│  代价：DNS 被劫持（dns-hijack any:53 + fake-ip）      │
+│        大流量易被掐断（vLLM 5.2GB 镜像拉断的根因）    │
+│        内网需 route-exclude 白名单（本机已排          │
+│        172.18.0.0/16）                               │
+│  适配：日常网页/多应用全局翻墙                        │
+└─────────────────────────────────────────────────────┘
+  ▼
+┌─ 端口代理（指路模式，本机当前）─────────────────────┐
+│  本地端口监听（混合 7890 / Socks 7891 / HTTP 7892）   │
+│  应用显式配置代理地址才走，其余直连                   │
+│  不劫持 DNS、不影响内网、大流可配 no_proxy 精确放行   │
+│  代价：每个应用要单独配置                             │
+│  适配：git / docker 拉镜像 / 大文件下载               │
+└─────────────────────────────────────────────────────┘
+  ▼
+选用结论：日常浏览开 TUN 省心；
+         git/下载类用显式端口代理，要的是可控不是全局
+```
+
+**关键认知**：
+
+- **两种模式最终都到节点出网**，成败取决于当时节点/链路质量；但**行为可控性完全不同**——TUN 是系统层全接管，端口代理是按需指路
+- **"开 TUN 推送成功"是表象**：开 TUN 时 git 直连 github 的流量被透明接管走节点，链路好就成；失败那次是节点/链路抖动（长连接帧被掐断），与模式无关
+- **显式代理后 git 走回环**：`http.proxy=127.0.0.1:7890` 是本地回环流量，TUN 一般不劫持 → 不再双重经过 TUN，且可叠加 `no_proxy`、`http.version HTTP/1.1` 等精确控制
+- **本机当前状态（260823 实测）**：TUN 关闭（`mihomo.yaml` 第 24 行 `tun.enable: false`），混合 7890 / Socks 7891 / HTTP 7892 端口运行中
+- **大流风险对照**：vLLM 镜像排障中 TUN fake-ip 劫持导致 5.2GB 反复断流（见下条）；git 大仓库长连接同样适用——节点不稳优先降级 HTTP/1.1 或走 SSH
+
+---
+
+## 🐛 git push 报 HTTP2 framing layer 错误排障 260823
+
+> 问题：git push 报 `fatal: unable to access 'https://github.com/a6b0x/edge.git/': Error in the HTTP2 framing layer`，最初以为是提交失败。实为 commit 成功、push 失败；两种网络错误交替出现 = 通道不稳，最终配置本机代理解决。
+
+```text
+[git push 报 HTTP2 framing layer —— 判定为提交失败]
+  │
+  ▼
+① git status 澄清：工作区干净、ahead by 1
+   commit 已落盘，报错发生在 push 阶段
+  ▼
+② curl -I https://github.com → HTTP/2 200
+   网络并非不可达
+  ▼
+③ 开 GIT_TRACE_CURL 重试 push → HTTP/2 200、推送成功
+   但立刻再推 → Connection timed out（TCP 建连超时）
+  ▼
+④ 判定：HTTP2 framing layer 与 Connection timed out 交替
+   = 网络通道不稳（丢包/连接被重置），非 git 配置问题
+  ▼
+⑤ 检测本机代理：mihomo-smart 监听 127.0.0.1:7890/7891
+  ▼
+⑥ git config --global http.proxy http://127.0.0.1:7890
+   → push 成功 ✅
+```
+
+**关键认知**：
+
+- **commit 成功、push 失败**：`fatal: unable to access` 报错在 push 阶段；`git status` 显示 ahead by 1 且工作区干净，即证明 commit 已落盘
+- **错误信息可定位失败阶段**：`HTTP2 framing layer` = TCP 已连上但帧数据被破坏/截断（丢包、中间设备干扰、MTU）；`Connection timed out` = TCP 握手阶段超时；两者交替出现 = 网络不稳定
+- **本机代理是 mihomo-smart**：监听 `127.0.0.1:7890`（混合代理，HTTP/SOCKS 通用）；用 `ss -tlnp | grep 127.0.0.1:7890` 可确认
+- **配置命令**：`git config --global http.proxy http://127.0.0.1:7890` 与 `https.proxy` 同值；取消用 `--unset`；配置对 git 全部子命令（clone/fetch/pull/push）生效
+- **待解卡点**：mihomo TUN 透明代理仍在运行，曾掐断 5.2GB 大流（见下条 vLLM 排障）；git 大仓库/长连接若再断，备选方案是降级 HTTP/1.1（`git config --global http.version HTTP/1.1`）或改用 SSH 协议
+
+---
 
 ## 🐛 vLLM 镜像拉取排障 260823
 
