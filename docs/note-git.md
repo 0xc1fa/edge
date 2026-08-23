@@ -17,6 +17,37 @@ a6b0x/edge ──Transfer ownership──▶ 0xc1fa/edge
 3. **更新本地 remote**: `git remote set-url origin https://github.com/<新账号>/edge.git`
 4. **push 显示 up-to-date 不奇怪**: 迁移时内容已随仓库搬走, 本地/远程 HEAD 一致 → 无数据可传 → 不触发认证。下次有新提交 push 才需要新账号的 token（HTTPS 需新账号 PAT，`credential.helper store` 可免密）
 
+**迁移后常见坑: 提交作者/凭据仍是旧账号**
+
+**场景:** push 成功但 GitHub 上 commit 作者仍显示旧账号 a6b0x。
+
+**根因:** GitHub 靠**提交邮箱**关联作者。本地 git 身份(邮箱 `30930448+a6b0x@users.noreply.github.com`, 前缀是 a6b0x 的 user id)没换, 提交就归 a6b0x。仓库归属已迁移, 但作者归属没变——两件事独立。
+
+**排查步骤:**
+
+1. `git remote -v` — 确认 remote 已指向新账号
+2. `git log --format='%an <%ae>'` — 看提交邮箱
+3. `git config user.name / user.email` — 看本地身份
+4. `cat ~/.git-credentials` 脱敏检查 — 看实际认证凭据(用户名 = user id 可反查归属: `https://api.github.com/user/<uid>`)
+
+**修改身份(只影响之后提交, 历史提交不动):**
+
+```bash
+# init/git-config.sh 有 detect_gh 自动检测, 也可手动:
+git config user.name "H"
+git config user.email "260347770+0xc1fa@users.noreply.github.com"  # <uid>+<用户名>@users.noreply.github.com
+```
+
+**项目级凭据(只改本项目, 不碰全局):**
+
+```bash
+git config --local credential.https://github.com.helper "store --file=/root/edge/.git-credentials"
+printf 'https://0xc1fa:%s@github.com\n' '<PAT>' > /root/edge/.git-credentials && chmod 600 /root/edge/.git-credentials
+```
+
+- 全局 `~/.git-credentials` 保持不动, 其他项目不受影响
+- 该文件在仓库内, 不入 git 跟踪
+
 > 迁移期间 git 网络问题（代理配置 / HTTP2 framing layer）见 `note-base.md`「TUN 透明代理 vs 端口代理」「git push 报 HTTP2 framing layer 错误排障」两节。
 
 ---
