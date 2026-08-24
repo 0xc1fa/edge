@@ -37,6 +37,7 @@ x-vllm-common: &vllm-common
     HF_HOME: "/models/.cache/huggingface" # HF 缓存放模型卷内
   volumes:
     - /root/edge/models:/models:ro # 模型统一目录,只读挂载
+    - vllm_cache:/root/.cache/vllm # torch.compile 缓存持久化(命名卷): 容器重建后缓存存活,不重编译
   dns:
     - 114.114.114.114
     - 223.5.5.5
@@ -189,3 +190,4 @@ services:
 volumes:
   openwebui_data:
   webui_hf_cache:
+  vllm_cache: # torch.compile 缓存持久卷: down/up 切换模型后不重编译

@@ -82,7 +82,3 @@
 - API 验证 `max_model_len=65536` ✅；思考模式默认开启 ✅（测试请求输出以 `Here's a thinking process:` 开头）
 - 显存：每卡 23050 / 24564 MiB，余 ~1GB，无 OOM
 - 服务就绪 ~12 分钟（权重加载 475s + torch.compile 92s + warmup 90s）
-
-**待解卡点**：
-
-- 启动慢：`torch_compile_cache` 未命中，每次重启重新编译（候选：`--enforce-eager` 或排查缓存目录，需用户确认）

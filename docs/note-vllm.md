@@ -1,5 +1,71 @@
 # vLLM 引擎
 
+## 🚀 优化模型编译缓存 260824
+
+> 启动慢——模型编译缓存（`torch_compile_cache`）未命中，每次重启重新编译（候选 `--enforce-eager` 或排查缓存目录）。已解决并验证。
+
+**现象**：切换模型（`down/up`）或重建容器后，vLLM 每次都要完整重跑 torch.compile（~91s），加上权重加载 474s + warmup 90s，启动总时长 ~13min。正常应只首次编译、后续秒级加载缓存。
+
+**根因：缓存落在容器"可写层"，随容器销毁**：
+
+```
+docker compose up  →  镜像层(只读) + 新建空可写层 ──▶ 容器开始运行
+                        │
+                        └─ vLLM 写入 /root/.cache/vllm/torch_compile_cache
+                           → 落在这层"可写层"里
+
+docker compose down → 删除容器 = 镜像层保留, 但【可写层整个扔掉】
+docker compose up   → 又新建一个空的可写层 → 缓存没了, 重新编译
+```
+
+关键理解：**不是"必须映射宿主机"，而是"必须放在容器生命周期之外"**。`docker restart` 不删容器所以缓存能保留，但切换模型用的是 `down/up`（删容器重建），可写层被清空：
+
+
+| 操作                        | 容器保留？ | 可写层保留？ | torch_compile_cache 还在吗 |
+| --------------------------- | ---------- | ------------ | -------------------------- |
+| `docker restart`            | ✅         | ✅           | ✅ 秒起                    |
+| `docker compose down && up` | ❌ 重建    | ❌ 清空      | ❌ 重编译                  |
+
+**方案**（compose `x-vllm-common` 公共锚点 + 文件末尾 volumes 段，命名卷生命周期独立于容器）：
+
+```yaml
+  volumes:
+    - /root/edge/models:/models:ro
+    - vllm_cache:/root/.cache/vllm # torch.compile 缓存持久化: down/up 后不重编译
+
+volumes:
+  vllm_cache: # 命名卷,生命周期独立于容器
+```
+
+**验证**（260824 实测，`down/up` 重建容器 + 卷保留）：
+
+
+| 指标                 | 第一次（空卷）                            | 第二次（缓存命中）                                    | 变化                 |
+| -------------------- | ----------------------------------------- | ----------------------------------------------------- | -------------------- |
+| compile 日志         | `saved AOT compiled function`（编译保存） | `Directly load AOT compilation from path`（直接加载） | 编译 → 加载         |
+| torch.compile 耗时   | **91.18 s**                               | **8.51 s**                                            | **-91%**             |
+| 容器启动 → API 就绪 | ~13 min                                   | ~9 min                                                | 省 ~4 min            |
+| 模型权重加载         | 474 s                                     | 474 s                                                 | 无变化（权重不缓存） |
+
+第二次启动日志铁证（直接命中命名卷里的缓存）：
+
+```text
+13:43:06 Directly load AOT compilation from path /root/.cache/vllm/torch_compile_cache/.../rank_0_0/model
+13:43:06 Directly load AOT compilation from path /root/.cache/vllm/torch_compile_cache/.../rank_1_0/model
+13:43:06 torch.compile took 8.51 s in total
+```
+
+产物 447MB 写入卷 `vllm_vllm_cache`，跨容器重建存活。
+
+**关键认知**：
+
+- 命名卷与宿主机 bind mount 本质相同：存储生命周期独立于容器，都能跨容器重建存活。bind mount 排障直观（宿主机 `ls` 直接看），命名卷更"纯净"（Docker 托管 `/var/lib/docker/volumes/`）——本方案选命名卷
+- 缓存 key 由启动参数/模型/引擎版本/GPU 架构决定，**改参数仍会失效重编译** → 调参集中一次重启，别改一个参数重启一次
+- `--enforce-eager` 不划算：只省 ~90s 启动，但永久失去运行时算子图优化（tok/s 下降）
+- vLLM 镜像"膨胀"与运行时 compile 缓存无关：压缩 ~9GB ≠ 落盘 ~30GB（CUDA 二进制解压 ~3.4x），多版本堆积才是磁盘大头
+
+---
+
 ## 🚀 Qwen3.6 思考模式修复 260824
 
 > 背景：双 4090 + vLLM 0.27.1 + Qwen3.6-35B-A3B-AWQ（tclf90），Open WebUI v0.10.2。用户提问后前端反复显示思考文本、最后几段不断循环，只有"结束对话"才能终止。目标：**保留思考模式且正常响应**。最终定性：**模型无缺陷，真因是 vLLM 配置缺失**（缺 `--reasoning-parser=qwen3`）。本节为"先错后纠"完整演进：第一阶段旧方向（v0.26.0 时代）被推翻，第二阶段 260824 找到真根源。
