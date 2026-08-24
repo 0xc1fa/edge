@@ -1,5 +1,200 @@
 # 网络 代理 下载
 
+## 🐛 Antigravity IDE "working" 无响应排障 260824
+
+> 场景：Mac（小火箭）通过 Antigravity IDE 远程连接 Ubuntu 主机开发，关闭 TUN 后 AI 对话一直显示 "working" 卡死；设置 ~/.bashrc 代理变量无效；重开 TUN 恢复正常。
+
+```text
+[排障步骤]
+
+① IDE 显示 "working" 卡死
+  ▼
+② 排查：Mac 开小火箭 → 无效（AI API 从 Ubuntu 发出，不是 Mac）
+  ▼
+③ 打开 Ubuntu 上的 Clash TUN → 立即恢复
+  根因确认：Ubuntu 直连 AI API 被 GFW 拦截
+  ▼
+④ 尝试设 ~/.bashrc 环境变量，关 TUN 测试 → 仍然失败
+  ▼
+⑤ 根因：Antigravity 以 daemon/service 运行，不继承 ~/.bashrc
+  ▼
+⑥ 当前可用方案：保持 TUN 开启（AI API 为小流量，不触发大流问题）
+   长期方案：/etc/environment 或 systemd 注入（见下）
+```
+
+**为什么 Mac 开了小火箭，Ubuntu IDE 还是卡？**
+
+```text
+[流量实际路径]
+
+  Mac（小火箭）
+  ┌──────────────────────┐
+  │  IDE 界面（仅显示）  │  ← Mac 只负责显示 UI
+  └──────────┬───────────┘
+             │ SSH / WebSocket 远程连接
+             ↓
+  Ubuntu 主机（Antigravity 核心运行在这里）
+  ┌──────────────────────────────────────────┐
+  │  Antigravity Agent                       │
+  │  - 接收问题                              │
+  │  - 调用 AI API（api.anthropic.com 等）  ─┼──→ 🌐 互联网
+  │  - 执行工具（读文件、跑命令）            │   （被GFW拦截）
+  └──────────────────────────────────────────┘
+
+  Mac 的小火箭：只代理 Mac 自己发出的流量，
+               对 Ubuntu 的出网请求完全无感知、无效。
+  Mac 和 Ubuntu 是完全独立的两条出网路径。
+
+[没有代理时（卡住）]
+
+  你输入问题 → Mac IDE界面 → SSH → Ubuntu Agent
+                                        ↓
+                              尝试连接 api.anthropic.com
+                                        ↓
+                                   GFW 拦截
+                                        ↓
+                              一直等待超时 → 显示 "working"
+
+[开启 Ubuntu Clash TUN 后（正常）]
+
+  你输入问题 → Mac IDE界面 → SSH → Ubuntu Agent
+                                        ↓
+                              尝试连接 api.anthropic.com
+                                        ↓
+                              TUN 虚拟网卡透明接管
+                                        ↓
+                              代理节点（海外）→ API 返回 OK
+                                        ↓
+                                   AI 正常响应
+```
+
+**为什么设了 ~/.bashrc 环境变量还是不行？**
+
+```text
+[.bashrc 的生效范围]
+
+  打开终端 → bash 启动 → 读 ~/.bashrc → 变量生效
+                                          ↓
+                               只在这个 Shell 会话里有效
+
+  Antigravity 启动方式：systemd service / 开机自启 daemon
+    → 不经过任何 bash shell
+    → 完全不读 ~/.bashrc
+    → 没有 https_proxy 变量 → 关了 TUN 就断
+
+[代理的三个层级，及对 daemon 的覆盖能力]
+
+  第一层：TUN（系统网络层）
+    改路由表，强制接管所有 TCP/UDP，应用无感知
+    覆盖：100%（含国内服务器，可能帮倒忙）
+    daemon 是否受影响：是 ✅
+
+  第二层：环境变量（进程层）≈ "软TUN"
+    只有「读这个变量」的应用才走代理，仅覆盖 HTTP/HTTPS
+    ~/.bashrc    → 只对交互 Shell 有效，daemon 不读 ❌
+    /etc/environment → 系统级，PAM 登录时继承，daemon 也能读 ✅
+
+  第三层：应用配置（应用层）
+    git config http.proxy → 只影响 git，最精确
+    daemon 不受影响 ❌
+```
+
+**大文件下载要关 TUN，AI API 要开 TUN，矛盾怎么解？**
+
+```text
+代理节点 = 一根水管
+
+  API 请求（KB 级）：0.1 秒过完，水管稳不稳无所谓 → TUN 没问题
+  5.2GB 镜像（GB 级）：要流 10-30 分钟，水管抖动即断 → TUN 有风险
+                       且国内镜像走代理节点绕一圈海外，毫无意义
+
+结论：两个场景风险不同，不矛盾
+  日常 IDE 使用 → 保持 TUN 开启（请求小，快进快出）
+  拉大文件时   → 临时关 TUN，走国内镜像直连
+```
+
+**不开 TUN 有没有其他方案让 IDE 正常？**
+
+```text
+方案一：/etc/environment（优先试）
+  系统级变量，PAM 登录时所有进程继承（含 daemon）
+
+  sudo tee -a /etc/environment <<'EOF'
+  https_proxy=http://127.0.0.1:7890
+  http_proxy=http://127.0.0.1:7890
+  no_proxy=localhost,127.0.0.1,172.18.0.0/16
+  EOF
+  # 需重启或重新登录生效
+
+方案二：找到 Antigravity 启动机制，直接注入
+  ps aux | grep -i antigravity
+  systemctl --user list-units | grep -i antigravity
+
+  若是 systemd 服务：
+  systemctl --user edit antigravity
+    写入：
+    [Service]
+    Environment="https_proxy=http://127.0.0.1:7890"
+    Environment="http_proxy=http://127.0.0.1:7890"
+  systemctl --user restart antigravity
+
+方案三：redsocks + iptables（精准重定向，无需 TUN）
+  把指定进程/端口的 TCP 流量重定向到 SOCKS5
+  不动路由表，不劫持 DNS，比 TUN 更轻量
+  大文件可用 no_proxy 精确放行
+
+方案四：mihomo tproxy 模式
+  不建虚拟网卡，iptables tproxy 实现透明代理
+  DNS 不劫持，比 TUN 更稳定
+
+优先级：/etc/environment → 找启动机制注入 → redsocks → tproxy
+```
+
+**TUN vs 端口代理 决策框架**
+
+```text
+                    目标服务器能直连吗？
+                          │
+              ┌───────────┴───────────┐
+              │ No（被GFW拦）          │ Yes（国内/不被拦）
+              │                       │
+              ▼                       ▼
+        有国内镜像吗？         直连，不走任何代理
+              │               （关TUN，不设proxy）
+        ┌─────┴─────┐
+     Yes│           │No
+        │           │
+        ▼           ▼
+   关TUN，直连      数据量大不大？
+   国内镜像源            │
+   （最快最稳）    ┌──────┴──────┐
+               小数据│         大文件│
+                    │             │
+                    ▼             ▼
+              TUN/端口        显式端口代理
+              均可            + HTTP/1.1降级
+                              避免TUN
+```
+
+一句话原则：能直连就直连；必须代理选显式端口；TUN 只在「多应用全局翻墙」时开；大文件确认不过海外节点。
+
+
+| 场景                 | 路径                           | 结论                    |
+| -------------------- | ------------------------------ | ----------------------- |
+| Antigravity AI API   | 被拦 → 无镜像 → 小数据       | 走代理（TUN或显式均可） |
+| vLLM 5.2GB 镜像      | 被拦 → 有国内镜像             | 关TUN，直连华为云       |
+| git push GitHub      | 被拦 → 无镜像 → 中等数据不稳 | 显式代理 + HTTP/1.1     |
+| docker pull 国内镜像 | 不被拦                         | 直连，TUN 会帮倒忙      |
+| apt install 国内源   | 不被拦                         | 直连，no_proxy          |
+
+**关键认知**：
+
+- **~/.bashrc 对 daemon 无效**：systemd service、nohup 启动的进程不读 ~/.bashrc；正确做法是 `/etc/environment`（系统级）或 systemd unit `Environment=`
+- **TUN 与 AI API 共存无大流风险**：AI API 为 KB 级小数据，不触发 GB 级大流被掐断的问题
+- **两个需求的和解**：日常保持 TUN 开启；拉大文件时临时关 TUN 走国内镜像
+
+---
+
 ## ⚖️ TUN 透明代理 vs 端口代理 260823
 
 ```text
