@@ -1,5 +1,140 @@
 # vLLM 引擎
 
+## 🚀 Qwen3.6 思考模式修复 260824
+
+> 背景：双 4090 + vLLM 0.27.1 + Qwen3.6-35B-A3B-AWQ（tclf90），Open WebUI v0.10.2。用户提问后前端反复显示思考文本、最后几段不断循环，只有"结束对话"才能终止。目标：**保留思考模式且正常响应**。最终定性：**模型无缺陷，真因是 vLLM 配置缺失**（缺 `--reasoning-parser=qwen3`）。本节为"先错后纠"完整演进：第一阶段旧方向（v0.26.0 时代）被推翻，第二阶段 260824 找到真根源。
+
+```text
+[思考模式折叠 · 完整演进（先错后纠）]
+  │
+  ▼
+【第一阶段：初遇问题（v0.26.0 时代，旧方向，已被推翻）】
+  现象：问问题后前端反复显示同一段思考文本
+    │
+    ├─▶ 分析：tclf90 AWQ 输出 "Here's a thinking process..." 文本式思考
+    │    尝试 --reasoning-parser=qwen3 ✖ 整个输出被当思考 → content 为空
+    │    归因：模型无 <think> 标签 → "严格折叠不可实现"
+    │
+    └─▶ [采纳] --default-chat-template-kwargs={"enable_thinking": false}
+          └─▶ 默认直接回答；按请求传 chat_template_kwargs 可临时开启
+          （隐藏代价：放弃思考模式 = 没解决真实需求）
+  │
+  ▼
+【第二阶段：纠偏（260824）】
+  触发：用户明确要"思考模式且正常响应"，绕开方案不满足需求
+    │
+    ▼ ① 读模型文件 chat_template.jinja
+    │    有完整 <think> / reasoning_content / enable_thinking 逻辑
+    │    → 模型文件层面支持标准思考格式，旧结论"无标签"存疑
+    ▼ ② 读官方 README（模型仓库自带）
+    │    官方明确推荐启动参数 --reasoning-parser qwen3
+    │    → 直接否定旧注释"无法用 reasoning-parser 拆分"
+    ▼ ③ 版本实证（容器内查 vLLM 0.27.1 源码）
+    │    vllm/reasoning/qwen3_engine_reasoning_parser.py（注册名 qwen3）
+    │    但 compose 从未启用 → 思考全文混入 content
+    │    → 根因锁定：vLLM 配置缺失，非模型缺陷
+    ▼ ④ DB 铁证（webui.db chat_message）
+    │    assistant content="" 但 output 53KB，消息 status 永久卡 in_progress
+    │    （未收到 finish_reason/[DONE]）→ 前端对未完成消息反复重放 = "循环"假象
+    ▼ ⑤ 修复 ── compose 加 --reasoning-parser=qwen3（与 --tool-call-parser=qwen3_xml 共存）
+    ▼ ⑥ 验证 ── 思考拆到 reasoning 字段、content 仅正式回答、流正常 [DONE]
+    └─▶ 完成：思考可折叠、不再循环、不再卡 in_progress
+```
+
+**排查取证细节（按 ①~⑥ 展开，命令可复用）**：
+
+**① 读 chat_template.jinja——模型文件层面"输出思考"是预期设计**
+
+```bash
+grep -n "think\|reasoning" /root/edge/models/Qwen3.6-35B-A3B-AWQ/chat_template.jinja | head
+# <think> 起止、reasoning_content 字段、enable_thinking 分支齐全
+# → 模型"输出 <think> 思考"是官方设计，第一阶段"无标签不可拆分"的结论存疑
+```
+
+**② 读官方 README——启动参数白纸黑字**
+
+```bash
+grep -n "reasoning-parser" /root/edge/models/Qwen3.6-35B-A3B-AWQ/README.md
+# 官方示例直接给 --reasoning-parser qwen3
+# → 与旧笔记"无法用 reasoning-parser 拆分"直接冲突，以官方为准
+```
+
+**③ 版本实证——容器内查引擎源码（现象-猜测不可靠）**
+
+```bash
+docker exec vllm-qwen36 ls /opt/vllm/vllm/reasoning/ | grep qwen3
+# qwen3_engine_reasoning_parser.py ← v0.27.1 已回归注册名 qwen3
+# （v0.26.0 该解析器拆分后无旧名，参数校验即崩——旧失败结论随版本作废，见 260822 条目）
+docker exec vllm-qwen36 grep -n "qwen3" /opt/vllm/vllm/reasoning/parser_manager.py | head
+```
+
+**④ DB 铁证——"循环"是前端对未完成消息的重放**
+
+```bash
+docker cp vllm-webui:/app/backend/data/webui.db /tmp/webui.db
+sqlite3 /tmp/webui.db "SELECT status, length(content), length(output) FROM chat_message WHERE role='assistant';"
+# status=in_progress | content 长度 0 | output ≈53KB
+# → 该条消息从未收到完成事件(finish_reason/[DONE])，前端对 in_progress 消息反复重放 = "循环"假象
+```
+
+**⑤ 修复——compose 一行参数 + 日志确认生效**
+
+```diff
+  - --tool-call-parser=qwen3_xml
++ - --reasoning-parser=qwen3   # 与 tool-call-parser 相互独立，可共存
+```
+
+```bash
+docker logs vllm-qwen36 2>&1 | grep -i "reasoning"
+# 关键两行:
+#   ApiServer: ... reasoning_parser='qwen3'   ← 参数被接受生效
+#   EngineCore: ... parser_manager 加载 qwen3 解析器 + Application startup complete
+```
+
+**⑥ 验证闭环——API 修复前后对照（同一请求）**
+
+```bash
+# 非流式: 修复前 content=整段思考全文(无 reasoning 字段); 修复后:
+curl -s http://127.0.0.1:18000/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"qwen3.6-35b","messages":[{"role":"user","content":"1+1=? 简单回答"}],"stream":false}' \
+  | jq '{reasoning_len: (.message.reasoning|length), content_len: (.message.content|length), finish_reason: .finish_reason}'
+# → reasoning=思考(1686 字符) | content=正式回答(31 字符) | finish_reason=stop
+
+# 流式: 思考与回答分块送达、末尾正常 [DONE]（warmup 3 次后: reasoning 块 3293 字符 / content 块 94 字符）
+curl -sN http://127.0.0.1:18000/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"qwen3.6-35b","messages":[{"role":"user","content":"1+1=? 简单回答"}],"stream":true}' | tail -3
+# data: [DONE]
+# Open WebUI 侧: middleware.py:2967 兼容 delta.get('reasoning_content') or delta.get('reasoning')，
+#   日志无解析错误 → 前后端字段天然匹配，渲染链路无障碍
+```
+
+**隐藏坑（后果链）**：
+
+- `--reasoning-parser` 缺失的连锁反应：思考全文混入 content → 流式不产生正常 `finish_reason`/`[DONE]` → Open WebUI 消息卡 `in_progress` → 前端反复重放最后几段 = "循环"假象。**根子在引擎侧，别在前端找**
+- **旧笔记会"冻结"排查方向**：260822 条目"qwen3 旧名崩 + 无法拆分"是 v0.26.0 的结论，照抄就会绕开（关思考）。升级版本后同一结论必须重新验证——本次正是靠"读源码"推翻旧结论
+
+**重启成本构成**（改启动参数为什么等 15 分钟）：
+
+```text
+权重加载 ~475s + torch.compile 91.29s + Triton kernel warmup（GPU 99%）
+→ 合计约 15 分钟，一次性成本
+产物缓存于容器 /root/.cache/vllm/torch_compile_cache
+→ 容器不重建则后续秒起；改任何启动参数都会使缓存 key 失效触发重编译
+→ 教训：调参集中一次重启，别改一个参数重启一次
+```
+
+**关键认知**：
+
+- **思考折叠的两前提**：模型输出 `<think>` 标签 + vLLM 启用 `--reasoning-parser`。tclf90 AWQ 版**实际带 `<think>` 标签**，第一阶段"文本式思考不可拆分"的结论只适用于 v0.26.0——该版本解析器已拆分为 `qwen3_coder`/`qwen3_xml`，`qwen3` 旧名参数校验即崩（见 260822 条目）
+- **纠偏方法：现象-猜测不可靠，用"模型文件 + 官方文档 + 引擎源码"三重实证**。第一阶段错在：把 v0.26.0 失败经验当永久结论、只看输出现象（无标签）就归因模型缺陷、用"关思考"绕开而非解决需求；升级版本后必须逐版重新验证
+- **vLLM 0.27.1 字段名是 `reasoning`**（非 OpenAI 的 `reasoning_content`），Open WebUI v0.10.2 `middleware.py:2967` 明确支持 `delta.get('reasoning')`——前后端字段天然匹配
+- **`--reasoning-parser` 与 `--tool-call-parser` 相互独立可共存**：工具解析与思考拆分解耦，启用互不干扰
+- **消息卡 in_progress 的机制**：Open WebUI 未收到完成事件（`finish_reason`/`[DONE]`）时消息永远停在生成中状态，前端反复重放；根子在引擎侧思考文本不结束，非前端 bug
+- **修复价值排序**：解决真实需求（思考模式正常响应）> 绕开（关思考）；绕开会掩盖根源，下次同问题复发
+- **重启成本**：改启动参数后 torch.compile 缓存失效需重编译（约 15 分钟，权重加载 475s + compile 92s + warmup），产物缓存于容器 `/root/.cache/vllm`，容器不重建则后续秒起
+
+---
+
 ## 🚀 测试 MTP 优化方案  260823
 
 ```text
@@ -37,7 +172,6 @@
 
 - **新坑 `/dev/shm` 不足**：0.27.1 的 MTP 多进程 `shm_broadcast` 需共享内存，Docker 默认 64MiB 不够（0.26.0 无此需求，升级专属坑）。实测容器内广播缓冲 4 块共 ~668MiB（25/161/241 MiB ×2），用途：草稿 tokens/layout/metadata 从 EngineCore 广播到 TP worker
 - 验证通过项：`qwen3_xml` 解析器无 KeyError ✅；`Qwen3_5MTP` 架构加载成功（AWQ 主模型 + MTP 头兼容）✅；显存无 OOM（模型加载 9.42 GiB/卡，KV cache 375K tokens，并发 11.45x）✅
-
 
 **① 首轮请求含 JIT/编译开销，基准测试必须剔除或 warmup**
 

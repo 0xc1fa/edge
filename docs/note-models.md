@@ -1,5 +1,9 @@
 # 模型
 
+---
+
+> 思考模式相关结论已整合至 [note-vllm.md](../../docs/note-vllm.md)「260824 Qwen3.6 思考模式修复」：**模型无缺陷，真因是 vLLM 配置缺失**（compose 缺 `--reasoning-parser=qwen3`）。含旧 ④ 作废条目（已迁移）。本文件 ④ 中提及的思考模式行为以 note-vllm.md 260824 条目为准。
+
 ## 🚀 Qwen  选型/下载/部署/调优 260824
 
 > 背景：双 4090 + vLLM 0.27.1，新增 Qwen3.6 系列（MoE 35B 总参/3B 激活、原生多模态、Gated DeltaNet 混合注意力、128K 上下文）。用户目标链：脚本体检找问题 → 版本调研选型 → 直连下载 → compose 部署 → 显存调优 → 思考模式修复 → 上下文提升。
@@ -73,29 +77,7 @@
 - 架构决定 KV 省显存：40 层仅 10 层 full-attention（`full_attention_interval=4`）、KV heads=2、head_dim=256、KV 走 FP8 → 每 token KV 仅 ~15.5KB
 - 因此 32768 → 65536 上下文无显存压力（KV 容量支持），余量合理偏保守
 
-**④ 思考模式：文本式思考的折叠难题**
-
-```text
-[前端"循环显示"排查]
-  │
-  ▼
-现象：问问题后前端反复显示同一段思考文本
-  │
-  ▼
-根因：tclf90 AWQ 输出 "Here's a thinking process..." 文本式思考
-  │     无 <think> 标签 → 思考混入 content → 前端全文展示像循环
-  │
-  ├─▶ 尝试 --reasoning-parser=qwen3 ✖ 整个输出被当思考 → content 为空
-  └─▶ [采纳] --default-chat-template-kwargs={"enable_thinking": false}
-        └─▶ 默认直接回答；按请求传 chat_template_kwargs 可临时开启
-```
-
-**关键认知**：
-
-- 思考折叠的前提 = 模型输出带 `<think>` 标签 + vLLM reasoning parser；tclf90 AWQ 版是"文本式思考"（无标签），严格折叠不可实现
-- 260824 用户决定改为默认开启思考（`enable_thinking: true`），思考与答案同混 content，前端不折叠；需要直接回答时按请求传参关闭
-
-**⑤ max-model-len 32768 → 65536 + 开启思考模式**
+**④ max-model-len 32768 → 65536 + 开启思考模式**
 
 - API 验证 `max_model_len=65536` ✅；思考模式默认开启 ✅（测试请求输出以 `Here's a thinking process:` 开头）
 - 显存：每卡 23050 / 24564 MiB，余 ~1GB，无 OOM

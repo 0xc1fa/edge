@@ -152,12 +152,12 @@ services:
       - --max-num-batched-tokens=12288 # MoE 激活 3B, 批处理上限可放宽
       - --enable-auto-tool-choice # 启用自动工具选择
       - --tool-call-parser=qwen3_xml # Qwen3 系列统一 XML 工具解析器
-      # 思考模式说明:
-      #   tclf90 AWQ 版实际输出 "Here's a thinking process" 文本式思考, 不含 <think> 标签,
-      #   无法用 --reasoning-parser=qwen3 拆分(启用会导致 content 为空、前端"循环显示"思考)。
-      #   → 默认开启思考(enable_thinking=true), 回答前先输出思考过程;
-      #     注意思考文本会与答案一起出现在 content 里, 前端无法折叠。
-      #     若想恢复"直接回答", 按请求传 chat_template_kwargs: {"enable_thinking": false} 或改回全局关闭。
+      # 思考模式说明 (260824 修复):
+      #   vLLM 0.27.1 自带 qwen3 reasoning parser(vllm/reasoning/qwen3_engine_reasoning_parser.py),
+      #   注册名 qwen3。启用后把 <think>...</think> 拆到 reasoning_content, content 只留正式回答,
+      #   Open WebUI 可折叠思考, 不再出现"思考混入 content + 前端循环显示"的问题。
+      #   注意: reasoning parser 与 tool-call-parser 相互独立, 可同时启用。
+      - --reasoning-parser=qwen3
       - '--default-chat-template-kwargs={"enable_thinking": true}'
       # 多模态(图像+视频): 模型自带 preprocessor_config, vLLM 自动启用;
 
