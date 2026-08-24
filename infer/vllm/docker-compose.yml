@@ -7,6 +7,7 @@
 #   - coder      → Qwen3-Coder-30B MoE (AWQ, ModelScope)
 #   - qwen38     → Qwen3.8-27B 稠密 v0.27.1 无 MTP 对照 (AWQ, HuggingFace)
 #   - qwen38-mtp → Qwen3.8-27B 稠密 v0.27.1 + MTP 推测解码(优化版)
+#   - qwen36     → Qwen3.6-35B-A3B MoE 多模态 (AWQ, ModelScope)
 #
 # qwen38 分两个 profile 便于对照: 同一模型,同一引擎 v0.27.1,仅推测解码开/关
 #
@@ -18,8 +19,9 @@
 #   启动 Coder:        docker compose --profile coder      up -d
 #   启动 Qwen3.8 对照: docker compose --profile qwen38     up -d
 #   启动 Qwen3.8 MTP:  docker compose --profile qwen38-mtp up -d
+#   启动 Qwen3.6:      docker compose --profile qwen36     up -d
 #   切换模型:          docker compose --profile <当前> down && docker compose --profile <目标> up -d
-#   停止:              docker compose --profile coder --profile qwen38 --profile qwen38-mtp down
+#   停止:              docker compose --profile coder --profile qwen38 --profile qwen38-mtp --profile qwen36 down
 # =============================================================================
 
 # ---- 公共配置锚点 ----
@@ -126,6 +128,38 @@ services:
       #   官方文档佐证: 推测解码只适合"内存受限的低 QPS"负载,计算受限场景收益转负
       #   → 推荐: 延迟敏感低并发用本 profile; 吞吐优先/高并发用 qwen38(无MTP)
       - --speculative-config={"method":"mtp","num_speculative_tokens":2}
+
+  # ---------- 模型 3: Qwen3.6-35B-A3B MoE 多模态 ----------
+  # Qwen3.6-35B-A3B: MoE 35B总参/3B激活, 原生多模态(图像+视频), 混合注意力
+  # (Gated DeltaNet 线性注意力 + 标准注意力), 上下文 128K。
+  # 社区 AWQ W4A16 (tclf90, 25.5GB) → TP2 每卡 ~12.8GB, 双 4090 可全量装载。
+  # 与 qwen38 同为 MoE 轻激活, 参数沿用 qwen38 已调优配置; MTP 默认关闭
+  # (260823 实测: 计算受限环境下并发 MTP 为负优化 -27%~-40%)。
+  vllm-qwen36:
+    <<: *vllm-common
+    container_name: vllm-qwen36
+    profiles: [ "qwen36" ]
+    command:
+      - --model=/models/Qwen3.6-35B-A3B-AWQ # 模型权重路径
+      - --tensor-parallel-size=2 # 双卡张量并行
+      - --max-model-len=65536 # 最大上下文 64K(FP8 KV + 10/40 层全注意力, 每卡 KV 容量 ~115 万 token, 64K 余量充足)
+      - --gpu-memory-utilization=0.90 # 显存利用率
+      - --dtype=auto # 自动匹配量化格式(AWQ)
+      - --served-model-name=qwen3.6-35b # 对外模型名
+      - --enable-prefix-caching # 前缀缓存
+      - --kv-cache-dtype=fp8 # FP8 KV cache: 容量翻倍+带宽减半
+      - --max-num-seqs=4 # 最大并发序列数
+      - --max-num-batched-tokens=12288 # MoE 激活 3B, 批处理上限可放宽
+      - --enable-auto-tool-choice # 启用自动工具选择
+      - --tool-call-parser=qwen3_xml # Qwen3 系列统一 XML 工具解析器
+      # 思考模式说明:
+      #   tclf90 AWQ 版实际输出 "Here's a thinking process" 文本式思考, 不含 <think> 标签,
+      #   无法用 --reasoning-parser=qwen3 拆分(启用会导致 content 为空、前端"循环显示"思考)。
+      #   → 默认开启思考(enable_thinking=true), 回答前先输出思考过程;
+      #     注意思考文本会与答案一起出现在 content 里, 前端无法折叠。
+      #     若想恢复"直接回答", 按请求传 chat_template_kwargs: {"enable_thinking": false} 或改回全局关闭。
+      - '--default-chat-template-kwargs={"enable_thinking": true}'
+      # 多模态(图像+视频): 模型自带 preprocessor_config, vLLM 自动启用;
 
   # ---------- Open WebUI ----------
   open-webui:
