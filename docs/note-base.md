@@ -1,5 +1,125 @@
 # 网络 代理 下载
 
+## 🐛 Tailscale 与 Mihomo TUN 共存排障 260824
+
+> 场景：本机曾因「小火箭配置后连不上」卸载 Tailscale；重装后与 Mihomo（Clash Meta）TUN 模式共存，从控制面连不上 → DNS 劫持 → 数据面单向不通，最终用「覆盖脚本 + 策略路由」解决。
+
+```text
+[排障链路 —— 两个数据平面抢流量]
+  │
+  ▼
+① 根因：Mihomo TUN 透明接管全部流量，兜底 MATCH 走代理
+   → tailscale 控制面（login/controlplane.tailscale.com）连不上
+  ▼
+② 方案：旁路规则（TUN 排除 + DNS 白名单 + 分流规则）
+   · 小火箭（Shadowrocket）iOS 版原生支持 Tailscale
+   · Linux Mihomo 无 Tailscale 支持 → 必须旁路
+  ▼
+③ GUI 限制：规则页无添加按钮
+   → 用「覆盖 Override」JS 脚本注入规则（mihomo-party 全局覆盖，
+     合并后进 work/config.yaml）
+  ▼
+④ 误区：fake-ip 改真实 IP 无效
+   根因是 TUN 接管 + 规则兜底走代理，不是 DNS 模式问题
+  ▼
+⑤ tailscale up 卡住排查
+   · --headless 已被 1.98.9 移除
+   · control 域名返回 fake-ip → 需真实解析
+   · 「DNS 覆写总开关」决定真实解析能力
+   （fake-ip-filter 条目本身不产生真实解析，脚本注入无效）
+  ▼
+⑥ 数据面问题：本机 → 节点被 TUN 劫持
+   · 回包走 9002: from all iif lo lookup 2022 → 进 TUN → ICMP 丢失
+   · route-exclude 100.64.0.0/10 实际未生效（表 2022 仍有 100/10 路由）
+  ▼
+⑦ 最终解法：策略路由优先级高于 TUN 接管（priority < 9000）
+   ip rule add to 100.64.0.0/10 lookup main priority 8990
+   ip rule add from 172.16.0.0/12 lookup main priority 8999
+   → systemd oneshot 持久化（重启不丢）
+```
+
+**最终生效配置**：
+
+```yaml
+# mihomo tun 排除（GUI 修改，持久）
+tun:
+  route-exclude-address:
+    - 172.16.0.0/12        # Docker 全段
+    - 100.64.0.0/10        # Tailscale 内网
+    - 100.100.100.100/32   # Tailscale DNS
+
+# 覆盖脚本 override/*.js（全局覆盖，注入规则）
+config.rules.unshift(
+  "PROCESS-NAME,tailscaled,DIRECT",
+  "DOMAIN-SUFFIX,tailscale.com,DIRECT",
+  "DOMAIN-SUFFIX,ts.net,DIRECT",
+  "IP-CIDR,100.64.0.0/10,DIRECT,no-resolve",
+  "DST-PORT,41641,DIRECT"
+);
+
+# DNS：fake-ip-filter 含 +.tailscale.com / +.ts.net
+# 「DNS 覆写总开关」必须保持开启（决定完整合并 DNS 配置）
+```
+
+```text
+[策略路由优先级全景 —— 谁在抢流量]
+  优先级    规则                             谁赢
+  ──────    ────                             ───
+  9000      to 198.18.0.0/30 lookup 2022     fake-ip 回环
+  9001      dport 53 lookup main             DNS 直出
+  9002      from all iif lo lookup 2022      lo 出站 → TUN ← 回包劫持点
+  8990      to 100.64.0.0/10 lookup main     Tailscale 直出 ✅
+  8999      from 172.16.0.0/12 lookup main   Docker 直出 ✅
+  ──────
+  ip rule 按 priority 从小到大匹配，8990/8999 先于 9002 命中 → 绕过 TUN
+```
+
+**把 fake-ip 改成真实 IP（为什么不行）**
+
+> 用户原话："那把fake-ip 修改为真实 Ip 是不是也可以解决"——直觉：DNS 直接返回真实 IP，tailscale 域名就能解析成真实地址，控制面就能连上。
+
+```text
+[DNS 两种模式的差异 —— 只改解析结果的「形态」，不改流量走向]
+                │
+   ┌────────────┴────────────┐
+   ▼                         ▼
+fake-ip 模式              redir-host（真实 IP）模式
+DNS 返回假地址               DNS 返回真实地址
+198.18.0.x / 16             e.g. 192.200.0.103
+   │                         │
+   ▼                         ▼
+流量按假地址路由            流量按真实地址路由
+   │                         │
+   └────────┬────────────────┘
+            ▼
+    两者的流量最终都进入 TUN 接管 + 分流规则
+    ┌───────────────────────────────────────┐
+    │ TUN：系统网络层改路由表，接管全部流量   │
+    │ 规则：兜底 MATCH → 走代理              │
+    │ → tailscale 域名流量照样进代理         │
+    └───────────────────────────────────────┘
+            │
+            ▼
+  结论：DNS 模式改不改，流量走向都一样 → 无效
+```
+
+**为什么无效的根因拆解**：
+
+- **两个独立层面**：DNS 模式（域名→IP 的映射形态）与流量走向（路由表 + 分流规则）是**两个独立层面**；问题出在后者（TUN 接管 + 规则兜底走代理），前者改了不解决后者
+- **fake-ip 只是表象**：控制面连不上的表象是「域名解析到 fake-ip」，但根因是「流量进代理」；就算解析到真实 IP，流量仍被 TUN 劫持进代理，照样连不上
+- **正确解法在流量层**：让 tailscale 域名的流量走 DIRECT（旁路规则：`DOMAIN-SUFFIX,tailscale.com,DIRECT` + `IP-CIDR,100.64.0.0/10,DIRECT`），而不是改 DNS 模式——最终实测有效
+
+**关键认知**：
+
+- **TUN 会劫持回包**：本机进程回复 tailnet 节点的包（目标 100.x）会被 `9002: from all iif lo lookup 2022` 劫持进 TUN，ICMP 在 TUN 中丢失——`route-exclude` 不生效时用显式策略路由绕过（priority 小于 9000 即可），Linux→节点 ping 从 100% 丢包恢复到 0%
+- **ip rule 是内存态**：重启即丢，必须持久化（systemd oneshot service）；`route-exclude-address` 才是 mihomo 持久配置
+- **fake-ip-filter 条目 ≠ 解析能力**：白名单条目只决定「哪些域名不返回 fake-ip」，真实解析依赖 DNS 完整合并（mihomo-party 的「DNS 覆写总开关」控制），覆盖脚本注入 filter 条目无效
+- **小火箭是接入端不是管理端**：Shadowrocket 的 Tailscale 集成用 auth key 让 Mac 加入 tailnet，**无节点列表 UI**，看不到其它机器是正常设计；验证是否加入以 Linux 端 `tailscale status` 为准；创建 key 时**勿勾 Ephemeral**（离线即删节点）
+- **方向性不通排查法**：Linux→Mac 通（`tailscale ping` 有 pong）、Mac→Linux 不通时，Linux 端 `tcpdump -i tailscale0` 抓入站——**0 包 = Mac 侧数据面问题**（Shadowrocket 分流规则可能把 `100.64.0.0/10` 接管去代理），Linux 侧防火墙/路由已排除
+- **待解卡点**：Mac 经小火箭（Shadowrocket）加入 tailnet 后数据面不通，tcpdump 0 包确认包未进隧道，疑为 Shadowrocket 分流接管 tailnet 网段；备选方案：装官方 Tailscale App（brew install --cask tailscale）
+
+---
+
 ## 🐛 Antigravity IDE "working" 无响应排障 260824
 
 > 场景：Mac（小火箭）通过 Antigravity IDE 远程连接 Ubuntu 主机开发，关闭 TUN 后 AI 对话一直显示 "working" 卡死；设置 ~/.bashrc 代理变量无效；重开 TUN 恢复正常。
