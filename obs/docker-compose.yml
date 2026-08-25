@@ -1,0 +1,116 @@
+name: obs
+
+services:
+  prometheus:
+    # Prometheus 负责采集指标并执行告警规则。
+    image: prom/prometheus:v3.5.0
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml # 主配置
+      - --storage.tsdb.path=/prometheus # 数据目录
+      - --storage.tsdb.retention.time=0 # 历史数据全保留（不按时间裁剪）
+      - --web.enable-lifecycle # 支持热加载
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      # 监控配置文件跟 compose 同目录，便于整体迁移。
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus_data:/prometheus
+
+  grafana:
+    # Grafana 负责展示 Prometheus 指标和后续 dashboard。
+    image: grafana/grafana:12.1.1
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin123456}"
+      # 正确的 root_url，避免在反向代理后 URL 生成错误
+      GF_SERVER_ROOT_URL: "${GF_SERVER_ROOT_URL:-http://localhost:3000/}"
+      GF_SERVER_DOMAIN: "${GF_SERVER_DOMAIN:-localhost}"
+      GF_SERVER_ENFORCE_DOMAIN: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      # 启动时自动注入 Prometheus 数据源。
+      - ./grafana-datasource.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
+
+  alertmanager:
+    # Alertmanager 负责接收 Prometheus 告警并按路由通知。
+    image: prom/alertmanager:v0.28.1
+    container_name: alertmanager
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml # 主配置
+      - --web.listen-address=:9093 # 监听端口
+      - --log.level=info # 日志级别
+    ports:
+      # 只绑本机，方便查看告警 UI，不暴露公网。
+      - "127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+
+  webhook-dingtalk:
+    # 将 Alertmanager 告警转为钉钉群机器人消息的桥接服务。
+    # 端口不映射宿主机：仅 Alertmanager 经 Docker 网络内访问（webhook-dingtalk:8060）。
+    image: timonwong/prometheus-webhook-dingtalk:v2.1.0
+    container_name: webhook-dingtalk
+    restart: unless-stopped
+    command:
+      - --web.listen-address=:8060 # 监听端口
+      - --config.file=/etc/prometheus-webhook-dingtalk/config.yml # 钉钉机器人配置
+    volumes:
+      - ./dingtalk.yml:/etc/prometheus-webhook-dingtalk/config.yml:ro
+
+  node-exporter:
+    # 采集宿主机 CPU、内存、磁盘等系统指标。
+    image: prom/node-exporter:v1.9.1
+    container_name: node-exporter
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host # 读取宿主机文件系统
+    pid: host
+    volumes:
+      - "/:/host:ro,rslave"
+
+  cadvisor:
+    # 采集 Docker 容器级别的 CPU、内存、文件系统指标。
+    # 端口不映射宿主机：仅 Prometheus 经 Docker 网络内访问（cadvisor:8080）。
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - "/:/rootfs:ro"
+      - "/var/run:/var/run:ro"
+      - "/sys:/sys:ro"
+      - "/var/lib/docker:/var/lib/docker:ro"
+      - "/dev/disk:/dev/disk:ro"
+
+  dcgm-exporter:
+    # 采集 NVIDIA GPU 温度、显存和利用率指标。
+    # 端口不映射宿主机：仅 Prometheus 经 Docker 网络内访问（dcgm-exporter:9400）。
+    # 使用 Docker Hub 公共镜像，避免 nvcr.io 在未登录场景下返回 403。
+    image: nvidia/dcgm-exporter:4.4.1-4.6.0-ubuntu22.04
+    container_name: dcgm-exporter
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            # 允许 exporter 读取全部 GPU 指标。
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  # 复用原 monitoring 项目的数据卷，保证历史指标与 Grafana 配置不丢失。
+  prometheus_data:
+    external: true
+    name: monitoring_prometheus_data
+  grafana_data:
+    external: true
+    name: monitoring_grafana_data

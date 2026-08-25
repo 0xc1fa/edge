@@ -1,0 +1,19 @@
+# Alertmanager 路由与通知配置。
+# 默认把所有告警发给 webhook；接入真实通知时替换 receivers 里的 url 即可
+# （钉钉/飞书/企业微信机器人都支持 webhook 格式）。
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ["alertname", "job"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: "default-webhook"
+
+receivers:
+  - name: "default-webhook"
+    webhook_configs:
+      # 经 webhook-dingtalk 桥接转发到钉钉群机器人。
+      - url: "http://webhook-dingtalk:8060/dingtalk/obs-alert/send"
+        send_resolved: true

@@ -26,3 +26,8 @@ logs/benchmark-*/
 
 # ---- 凭据（项目级 git 凭据文件, 含 token, 禁止上传）----
 .git-credentials
+
+# ---- 监控栈 obs：敏感凭据（Grafana 密码 / 钉钉机器人 token 与加签密钥）----
+# 监控编排与规则文件（docker-compose.yml、prometheus.yml 等）正常纳入版本库
+obs/monitoring.env
+obs/dingtalk.yml

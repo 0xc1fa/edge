@@ -1,0 +1,86 @@
+# 按宿主机、容器、GPU 三类资源拆分规则，便于后续扩展。
+groups:
+  - name: infra-host-alerts
+    rules:
+      - alert: HostHighCpuUsage
+        # 持续 10 分钟超过 90% 才告警，避免短时尖峰噪声。
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "主机 CPU 使用率过高"
+          description: "实例 {{ $labels.instance }} 的 CPU 使用率持续 10 分钟高于 90%。"
+
+      - alert: HostHighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "主机内存使用率过高"
+          description: "实例 {{ $labels.instance }} 的内存使用率持续 10 分钟高于 90%。"
+
+      - alert: HostLowDiskSpace
+        # 排除虚拟/临时文件系统（tmpfs 等），保留真实磁盘与容器根分区（overlay）。
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|squashfs|iso9660|configfs|devpts|proc|sysfs|cgroup|mqueue|shm|autofs|fuse\\..*|nsfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|squashfs|iso9660|configfs|devpts|proc|sysfs|cgroup|mqueue|shm|autofs|fuse\\..*|nsfs"}) * 100 < 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "磁盘剩余空间不足"
+          description: "挂载点 {{ $labels.mountpoint }} 的剩余空间低于 10%。"
+
+  - name: infra-container-alerts
+    rules:
+      - alert: ExporterTargetDown
+        expr: up == 0
+        # 任一采集目标持续不可达 5 分钟直接告警。
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "监控目标不可达"
+          description: "监控目标 {{ $labels.job }} / {{ $labels.instance }} 持续 5 分钟不可达。"
+
+      - alert: ContainerCpuHigh
+        # 相对 CPU 配额计算：usage 速率(核) / 配额核数(quota/100000)，无配额容器按单核计。
+        expr: (rate(container_cpu_usage_seconds_total{name!=""}[5m]) / clamp_min(container_spec_cpu_quota{name!=""} / 100000, 1)) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "容器 CPU 使用率过高"
+          description: "容器 {{ $labels.name }} 的 CPU 使用率持续 10 分钟偏高。"
+
+      - alert: ContainerMemoryHigh
+        # 只对设置了内存限制的容器计算比例，避免除以 0。
+        expr: ((container_memory_working_set_bytes{name!=""} / clamp_min(container_spec_memory_limit_bytes{name!=""}, 1)) * 100 > 90) and on(name) (container_spec_memory_limit_bytes{name!=""} > 0)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "容器内存使用率过高"
+          description: "容器 {{ $labels.name }} 的内存使用率持续 10 分钟高于 90%。"
+
+  - name: infra-gpu-alerts
+    rules:
+      - alert: GpuTemperatureHigh
+        # 4090 长时间高温会影响稳定性，先用 85 度做预警阈值。
+        expr: DCGM_FI_DEV_GPU_TEMP > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU 温度过高"
+          description: "GPU {{ $labels.gpu }} 温度持续 10 分钟高于 85 摄氏度。"
+
+      - alert: GpuMemoryHigh
+        # 分母 = USED + FREE + RESERVED（总显存），避免缺 RESERVED 导致占比虚高。
+        expr: (DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE + DCGM_FI_DEV_FB_RESERVED)) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU 显存占用过高"
+          description: "GPU {{ $labels.gpu }} 的显存占用持续偏高。"
