@@ -1,5 +1,61 @@
 # 网络 代理 下载
 
+## 🐛 无法连接 Tailscale 设备 260825
+
+> 场景：Mac（小火箭 Shadowrocket 路由模式接入 tailnet）ping Linux agent（100.69.186.2）全部 Request timeout；管理界面两设备均在线。最终解法：删除小火箭旁路路由 `100.64.0.0/10`；随后补开 MagicDNS 实现机器名访问。
+
+```text
+[排障链路 —— 方向性不通定位]
+  │
+  ▼
+① 先分方向：agent → mac23 用 tailscale ping（数据面协议）→ pong via DERP(hkg)
+   → 两端可达，Tailscale 数据面正常
+  ▼
+② agent 本机无拦截：iptables INPUT policy ACCEPT、icmp_echo_ignore_all=0、
+   ufw 未启用、tailscale0 UP
+  ▼
+③ agent 直接 ICMP ping mac23 → 3/3 收到回复（0% 丢包），tcpdump 双向可见
+   → ICMP over DERP 双向通 → 问题只在 mac23 → agent 方向
+  ▼
+④ agent 抓包 tailscale0（mac23 侧同时 ping）：0 包 → 请求根本没进 Tailscale 隧道
+  ▼
+⑤ mac23 定位：
+   route -n get 100.69.186.2 → 命中 100.64.0.0/10 → en1 → 家用路由器 192.168.50.1
+   netstat -rn → default/128.0/1/64/2 全劫持到 utun6（全局代理接管特征）
+  ▼
+⑥ 根因：小火箭是「路由模式」（Route，非 TUN 模式），旁路路由含 100.64.0.0/10
+   → 该网段流量绕过 Shadowrocket，从物理网卡裸发
+   → 家用路由器无 100.x 私有路由 → 丢弃 → 超时
+  ▼
+⑦ 修复：只删旁路路由 100.64.0.0/10 → ping 立即恢复
+   （无需另加 DIRECT 规则：Shadowrocket 对 CGNAT 保留段有内置识别，
+     流量进入处理管道后自动交给内置 Tailscale 通道）
+```
+
+**为什么只删一条就够**：路由模式的「旁路路由」= **绕过列表**（哪些网段绕过 Shadowrocket 裸发）。删除后 `100.64.0.0/10` 流量回到 Shadowrocket 处理管道，其内置 Tailscale 集成自动接管 CGNAT 段，无需用户配置 DIRECT。
+
+**DNS（MagicDNS）访问**（同一问题延伸）：
+
+```text
+[MagicDNS 与 mihomo DNS 覆写是独立开关]
+  想用短名访问 → nslookup agent 100.100.100.100 → SERVFAIL
+  ① tailscale dns status → MagicDNS: disabled tailnet-wide（控制面级，非本机）
+  ② 开启：admin console（login.tailscale.com/admin/dns）开 MagicDNS
+  ③ 各端接受：tailscale set --accept-dns=true（本机 + Mac 端）
+  ④ 验证：短名 / <name>.tail31403e.ts.net 解析到 100.x，双向 ping 0% 丢包
+  ⑤ 共存：route-exclude 100.100.100.100/32 + 策略路由 9001（dport 53 → main）
+     保证 MagicDNS 查询不被 mihomo TUN 劫持；DNS 覆写开关保持关闭（保机场 DoH）
+```
+
+**关键认知**：
+
+- **方向性不通排查法**：Linux→Mac 通（tailscale ping 有 pong）、Mac→Linux 不通时，Linux 端 `tcpdump -i tailscale0` 抓入站——**0 包 = Mac 侧数据面问题**（旁路/分流把 `100.64.0.0/10` 挡在隧道外），Linux 侧防火墙/路由已排除
+- **路由模式 ≠ TUN 模式**：路由模式的「旁路路由」是绕过列表而非虚拟网卡路由；Tailscale 网段必须留在 Shadowrocket 处理管道内，它才能识别并走内置 Tailscale 通道
+- **「DNS 覆写总开关」≠ MagicDNS**：前者管 mihomo 是否整体接管 dns 段（影响机场 DoH / 控制面域名解析），后者管 tailnet 机器名解析（100.100.100.100）——两个独立开关，互不影响；本次全程 DNS 覆写保持关闭
+- **MagicDNS 开启后与 mihomo 共存无冲突**：依赖既有 route-exclude `100.100.100.100/32` + 策略路由 9001 DNS 直出；本机验证：systemd-resolved 指向 100.100.100.100，机场节点不受影响
+
+---
+
 ## 🐛 Antigravity IDE 无响应 260825
 
 > 场景：Antigravity 对话报 network issue；API 实测 XFLTD 20 节点 delay 全 FAIL、订阅停 07-21（autoUpdate: false）且 API 403，但 Mac 同订阅正常。根因：「DNS 覆写总开关」开启 → GUI 模板整体替换订阅 dns 段 → 机场专属 DoH（proxy-server-nameserver）丢失 → 节点域名解析错位 → vless 握手失败。关闭开关后全部恢复。
@@ -138,7 +194,7 @@ DNS 返回假地址               DNS 返回真实地址
 - **fake-ip-filter 条目 ≠ 解析能力**：白名单条目只决定「哪些域名不返回 fake-ip」，真实解析依赖 DNS 完整合并（mihomo-party 的「DNS 覆写总开关」控制），覆盖脚本注入 filter 条目无效
 - **小火箭是接入端不是管理端**：Shadowrocket 的 Tailscale 集成用 auth key 让 Mac 加入 tailnet，**无节点列表 UI**，看不到其它机器是正常设计；验证是否加入以 Linux 端 `tailscale status` 为准；创建 key 时**勿勾 Ephemeral**（离线即删节点）
 - **方向性不通排查法**：Linux→Mac 通（`tailscale ping` 有 pong）、Mac→Linux 不通时，Linux 端 `tcpdump -i tailscale0` 抓入站——**0 包 = Mac 侧数据面问题**（Shadowrocket 分流规则可能把 `100.64.0.0/10` 接管去代理），Linux 侧防火墙/路由已排除
-- **待解卡点**：Mac 经小火箭（Shadowrocket）加入 tailnet 后数据面不通，tcpdump 0 包确认包未进隧道，疑为 Shadowrocket 分流接管 tailnet 网段；备选方案：装官方 Tailscale App（brew install --cask tailscale）
+- **✅ 已解决（见上方「无法连接 Tailscale 设备 260825」）**：Mac 经小火箭加入 tailnet 后数据面不通、tcpdump 0 包确认包未进隧道——根因是小火箭路由模式旁路路由 `100.64.0.0/10` 把流量绕过 Shadowrocket 裸发，删除该旁路即恢复；备选方案仍是装官方 Tailscale App（brew install --cask tailscale）
 
 ---
 
