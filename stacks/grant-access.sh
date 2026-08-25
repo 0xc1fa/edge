@@ -5,7 +5,7 @@
 set -e
 
 PORTAINER_URL="${PORTAINER_URL:-https://127.0.0.1:9443}"
-PASSWORD_FILE="${PASSWORD_FILE:-/root/edge/portainer/portainer_admin_password.txt}"
+PASSWORD_FILE="${PASSWORD_FILE:-/root/edge/stacks/portainer_admin_password.txt}"
 TARGET_USER="${1:-test}"
 ENDPOINT_NAME="${ENDPOINT_NAME:-dind-platform}"
 ROLE_ID="${ROLE_ID:-1}"   # 1=Environment Admin, 2=Standard User（可用 ROLE_ID=2 覆盖）

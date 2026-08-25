@@ -1,5 +1,43 @@
 # 容器化 多租户 资源隔离
 
+## 📁 规范服务名称 portainer → stacks 260825
+
+**背景**：目录名 `portainer` 与产品名混淆，改为反映"服务栈"的命名，灵感来自 Portainer UI 的 **Stacks** 菜单。
+
+**命名候选对比**（最终选 `stacks`）：
+
+- ❌ `devops`：语义过宽（CI/CD/监控都算），单目录扛不起
+- ❌ `container`：撞 Docker 通用名词，搜索/命令易混
+- ❌ `sandbox`：暗示"临时/可丢弃"，弱化"团队长期部署 + GPU 直通"定位
+- ❌ `pods`：撞 k8s 概念 + `/root/pods` 已存在
+- ❌ `stage`：暗示临时预发布区，与"长期基础设施"不符
+- ❌ `dockyard`/`enclave`/`dockbox`/`fleet`：备选但各有硬伤（与 Harbor 意象易混 / 偏书面 / 单机大词）
+- ✅ **`stacks`**：Portainer UI 原生概念（Stacks 菜单）；目录 = "一组服务叠成的栈"；与 `/root/edge` 下 `base/infer/runner` 功能词风格一致
+
+**关键决策：只改目录名，compose 内部命名一律不动。**
+
+- 卷 `portainer_data`/`dind-platform-data`/`registry-proxy-data`、网络 `portainer-net`、容器名、`name: portainer` 全部显式写死，与目录路径**解耦** → `mv` 目录对运行中容器 0 影响
+- 卷"改名" = 新建空卷 = 数据全丢，**绝不可动**；project/网络/容器名改动 = compose 视为新项目 → 容器孤儿化 + Portainer↔dind 管理链路（`tcp://dind-platform:9001`）中断
+- 目录改名后唯一变化：管理命令换目录执行 `cd /root/edge/stacks && docker compose ...`（显式 `name:` 保证 project 身份不变）
+
+**踩坑 / 认知**：
+
+1. **VS Code Docker 插件按容器 project label 分组**，label 创建时写死（`project=portainer`），不随目录名变 → 插件里显示 `portainer` 是预期现象，功能正常。
+2. **`name: portainer` 不能"直接"删**：删除后 project 名 = 目录名 `stacks`，但运行中容器 label 仍是 `portainer` → compose 视为新项目，up 时撞名报错。若要让插件显示 `stacks`（三步法，数据安全）：
+
+```bash
+docker compose -p portainer down   # ① 带旧 project 名停
+# ② 删除 docker-compose.yml 中 name: portainer
+docker compose up -d               # ③ 重建，project 自动 = stacks
+```
+
+权衡：删掉 `name:` 后 project 名跟随目录名，目录再改名会重演错位；写死 name 的意义是项目身份稳定。当前选择：**保留 name，接受插件显示 portainer**。
+
+3. **gitignore 同步是本次最高优先项**——目录名变了但规则没换，`portainer_admin_password.txt`（明文 `Admin@2026pass`）会被 git 追踪推送，等同泄露。
+4. `dind-platform` 重建会丢可写层 `/opt/demo-app`（卷数据不丢）；`portainer-auto-register` 显示 `Exited 0` 是一次性注册任务的正常退出，非故障。
+
+---
+
 ## 📦 自助运行 compose 数据库管理服务 260820
 
 ```
@@ -89,7 +127,7 @@ Docker Hub ──▶ 6000 proxy ──▶ dind 本地镜像库 ──▶ 容器
 
 **样例工程（test 自助验证用例，双入口可验证）：**
 
-- `/root/edge/portainer/examples/demo-app/docker-compose.yml`：adminer:4（管理页面 8091）+ postgres:16-alpine（数据库 5433）
+- `/root/edge/stacks/examples/demo-app/docker-compose.yml`：adminer:4（管理页面 8091）+ postgres:16-alpine（数据库 5433）
 - 验证：管理页面 `http://10.8.0.8:8091`（app/app123/appdb）；PG 客户端直连 `10.8.0.8:5433`
 - ⚠️ 样例工程当前不在运行：`/opt/demo-app` 写在 dind 可写层，dind 重建后丢失，需重新写入再 `docker compose up -d`
 
@@ -313,7 +351,7 @@ ports:
 
 **落地进度（260820）：方案 A 已容器化，临时 socat 退役**
 
-原 `nohup socat ... &` 临时进程已关闭，方案 A 落地为 `port-forward` 服务（`/root/edge/portainer/docker-compose.yml`），新增 `Dockerfile.port-forward`（alpine:3.22 + socat）与 `entrypoint-port-forward.sh`：
+原 `nohup socat ... &` 临时进程已关闭，方案 A 落地为 `port-forward` 服务（`/root/edge/stacks/docker-compose.yml`），新增 `Dockerfile.port-forward`（alpine:3.22 + socat）与 `entrypoint-port-forward.sh`：
 
 ```yaml
 # docker-compose.yml 新增服务（独立容器，不碰 dind-platform）
@@ -519,7 +557,7 @@ docker exec dind-platform sh -c 'docker run -d --name portainer-agent -p 9001:90
 
 > Portainer 首次启动要走 UI 初始化 admin，但中途遇到"初始化超时锁定"和"密码策略误报"，最终怎么自动完成初始化？用 `--admin-password-file=/run/secrets/portainer_admin_password` 让 Portainer **自动初始化 admin**，彻底绕过 UI 初始化页面、避开超时锁定；密码 `Admin@2026pass`（13 位）。
 
-**部署 compose（`/root/edge/portainer/docker-compose.yml`）：**
+**部署 compose（`/root/edge/stacks/docker-compose.yml`）：**
 
 ```yaml
 services:

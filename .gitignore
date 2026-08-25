@@ -5,11 +5,11 @@
 
 # ---- 敏感信息（禁止推送到公开仓库）----
 # Portainer 管理员明文密码，务必排除！
-portainer/portainer_admin_password.txt
+stacks/portainer_admin_password.txt
 
 # ---- 大体积二进制镜像归档 ----
-# 如需纳入版本管理，请用: git add -f portainer/agent.tar
-portainer/agent.tar
+# 如需纳入版本管理，请用: git add -f stacks/agent.tar
+stacks/agent.tar
 
 # ---- 本地运行时产物 ----
 *.log
@@ -26,3 +26,4 @@ logs/benchmark-*/
 
 # ---- 凭据（项目级 git 凭据文件, 含 token, 禁止上传）----
 .git-credentials
+runner/ssh/

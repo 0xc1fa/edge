@@ -245,7 +245,7 @@ fi
 
 # 敏感文件保护
 f=".gitignore"; [ -f "$f" ] || touch "$f"
-for rule in "portainer/portainer_admin_password.txt" "portainer/agent.tar" ".git-credentials"; do
+for rule in "stacks/portainer_admin_password.txt" "stacks/agent.tar" ".git-credentials"; do
   grep -qxF "$rule" "$f" 2>/dev/null || echo "$rule" >> "$f"
 done
 

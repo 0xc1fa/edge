@@ -25,7 +25,7 @@
 | 端口转发      | 8001(adminer) / 5433(postgres) / 8002-8004(预留) / 3306 / 5432           |
 
 ```bash
-cd /root/edge/portainer
+cd /root/edge/stacks
 
 # ① 准备（仅首次）：保存 agent 镜像，dind 内 agent 离线可用
 docker save portainer/agent:lts -o agent.tar
