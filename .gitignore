@@ -26,4 +26,3 @@ logs/benchmark-*/
 
 # ---- 凭据（项目级 git 凭据文件, 含 token, 禁止上传）----
 .git-credentials
-runner/ssh/

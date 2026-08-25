@@ -1,5 +1,64 @@
 # 容器化 多租户 资源隔离
 
+---
+
+## 🧹 CICD 流水线 260825
+
+> 本次会话在 `/root/edge/stacks` 上完成了一次完整的 CI/CD 基础设施探索（并入 gitea/registry/registry-ui + act_runner），**最终决策：删除全部 CICD 组件，stacks 保持精简**——只留代码仓库（gitea）、镜像仓库（registry + registry-ui + registry-proxy）、portainer。探索过程的坑与认知全部沉淀在本节。
+
+**探索动线与核心决策：**
+
+```
+solar 要上 CI/CD：devops 三服务(gitea/registry/registry-ui)能否并入 stacks？
+    ▼
+决策① 合并进 docker-compose.yml，复用原卷 devops_*（数据不丢）
+    ▼
+决策② act_runner 放宿主层（dind 无外网 + SSH 密钥在宿主）
+    │
+    │  ← 实测 docker push/pull 报 EOF
+    ▼
+坑① mihomo TUN 劫持 dockerd 流量 → registry 改 host 网络直连
+    ▼
+决策③ 镜像版本 latest → 固定 tag（gitea:1.23.8 / registry:2.8.3 /
+       registry-ui:2.6.0 / act_runner:0.6.1）
+    ▼
+决策④ 部署私钥迁 stacks/runner/ssh + .gitignore 防泄露
+    ▼
+为 solar 建 .gitea/workflows/build.yml：pnpm build → docker push :5000 → ssh 部署 deAI/app
+    │
+    │  ← 用户给出目标仓库 http://10.8.0.8:3100/solar/solar，开始执行验证（Run #1-#6）
+    ▼
+坑②~⑦ checkout 超时 / corepack 超时 / npm 超时 / envs 被忽略 → 逐一定位修复
+    ▼
+结论：链路坑多且收益未达预期 → 回退，删除全部 CICD，stacks 回归精简
+```
+
+**回退决策：**
+
+**为什么删 CICD**：经一轮完整验证，CICD 链路在"mihomo 代理环境 + dind 双层网络 + act_runner 0.6.1 限制"下坑多且收益未达预期；stacks 定位回归"精简的存储/托管平面"：
+
+
+| 删除项                                | 说明                                                                 |
+| ------------------------------------- | -------------------------------------------------------------------- |
+| `act-runner` 服务（cicd-runner 容器） | 宿主层 CI 执行器，标签`dind:docker://catthehacker/ubuntu:act-latest` |
+| `stacks/act-runner/`（config.yaml）   | runner 配置                                                          |
+| `stacks/runner/`（ssh 部署私钥）      | 已 rm，`.gitignore` 相应条目删除                                     |
+| `docs/page-260825.md`                 | CICD 完整文档，探索结论并入本节                                      |
+
+
+**关键坑清单：**
+
+1. **mihomo TUN 劫持 dockerd 流量**：`ip rule 5270 lookup 52` 把 docker 网段流量劫到 fake-ip(198.18.x)，`docker push/pull` 走 DNAT 后目标被改路由到物理网卡 → EOF/超时。解法：registry 用 `network_mode: host`，daemon 走 local 递送直连。
+2. **git 全局 http.proxy 劫持局域网**：`git push 10.8.0.8:3100` 走 127.0.0.1:7890 → 502。解法：`git config --global 'http.http://10.8.0.8:3100/.proxy' ''`（per-URL 绕过）。
+3. **act_runner 精简镜像无工具**：Alpine 版无 git/node/docker/ssh → 标签必须用 docker 模式 `dind:docker://catthehacker/ubuntu:act-latest`（实测自带全部工具）。
+4. **checkout clone 由 runner 进程执行**：action 源码/仓库 clone 是 runner 进程干的（缓存于 /root/.cache/act）→ runner 必须 host 网络 + 代理 env，job 容器才不受 TUN 影响。
+5. **corepack 不认 HTTP_PROXY**：Node fetch 下载 pnpm 不走代理 → 改 `npm install -g pnpm --no-audit --no-fund`。
+6. **act_runner 0.6.1 忽略 `container.envs` 与 `container.options -e`**：job 容器环境变量两种配置方式都无效 → 只能在 workflow 内用 `echo "K=V" >> "$GITHUB_ENV"` 注入。
+7. **job 容器出网**：host 网络下 job 容器走 `127.0.0.1:7890` mihomo 代理（NO_PROXY=10.8.0.8,127.0.0.1,localhost）。
+8. **insecure-registries**：宿主 `/etc/docker/daemon.json` 加 `10.8.0.8:5000`（dind 侧 daemon.json 同样信任 5000/6000）。
+
+---
+
 ## 📁 规范服务名称 portainer → stacks 260825
 
 **背景**：目录名 `portainer` 与产品名混淆，改为反映"服务栈"的命名，灵感来自 Portainer UI 的 **Stacks** 菜单。
@@ -23,7 +82,13 @@
 **踩坑 / 认知**：
 
 1. **VS Code Docker 插件按容器 project label 分组**，label 创建时写死（`project=portainer`），不随目录名变 → 插件里显示 `portainer` 是预期现象，功能正常。
-2. **`name: portainer` 不能"直接"删**：删除后 project 名 = 目录名 `stacks`，但运行中容器 label 仍是 `portainer` → compose 视为新项目，up 时撞名报错。若要让插件显示 `stacks`（三步法，数据安全）：
+2. **`name: portainer` 可删，前提是"先停旧项目"**（"不能直接删"的准确含义）：
+
+- ❌ 运行中不 down 直接删再 `up`：容器 label 仍是 `project=portainer`，compose 视为新项目（project=目录名 `stacks`），要新建 `container_name` 写死的同名容器 → `Conflict: container name already in use` 报错
+- ✅ 先 `down` 再删再 `up`：旧容器已停，以新 project 从零重建，卷/网络/容器名全部显式写死 → 服务与数据零影响（260825 实测：删 name 后 up 正常、加回 name 后 up 也正常）
+- ⚠️ 页面"环境 down"与 name 无关（完整现象/原因/判定见踩坑 5）：重建 dind-platform 后 Server 端点状态要等下一快照周期才刷新，期间显示 down 是快照滞后假象，服务与数据全正常
+
+若要让插件显示 `stacks`（三步法，数据安全）：
 
 ```bash
 docker compose -p portainer down   # ① 带旧 project 名停
@@ -31,10 +96,18 @@ docker compose -p portainer down   # ① 带旧 project 名停
 docker compose up -d               # ③ 重建，project 自动 = stacks
 ```
 
-权衡：删掉 `name:` 后 project 名跟随目录名，目录再改名会重演错位；写死 name 的意义是项目身份稳定。当前选择：**保留 name，接受插件显示 portainer**。
+权衡：删掉 `name:` 后 project 名跟随目录名（当前即 `stacks`），VS Code Docker 插件按 project 分组会显示 `stacks`；但目录一旦再改名，project 名随之变化、与运行中容器 label 错位，重演撞名风险。写死 `name: portainer` 的意义是项目身份稳定——卷/网络/容器名已显式写死，project 名再固定后，目录怎么改都不影响运行中服务。当前选择：**保留 name（项目身份稳定优先），VS Code Docker 插件分组显示 `portainer` 属预期现象，非故障**。
 
 3. **gitignore 同步是本次最高优先项**——目录名变了但规则没换，`portainer_admin_password.txt`（明文 `Admin@2026pass`）会被 git 追踪推送，等同泄露。
 4. `dind-platform` 重建会丢可写层 `/opt/demo-app`（卷数据不丢）；`portainer-auto-register` 显示 `Exited 0` 是一次性注册任务的正常退出，非故障。
+5. 重建 dind-platform 后，Portainer 页面"环境 down"是快照滞后假象，不是故障：
+   - **现象**：`up -d` 重建后，Home 页显示 DinD down，但 `docker compose ps` 全 Up、dind 内容器全 Running、端口/数据全正常
+   - **原因链路**：dind-platform 重建 = 容器进程全灭重来（dockerd + agent）→ entrypoint.sh 重新拉起 `portainer-agent`（`--restart=always`），9001 有几十秒空窗 → 期间 Server 轮询失败 → 端点 `Status` 标 down(2) → 端点状态只由快照任务刷新，`SnapshotInterval=5m` 未到前一直显示 down。
+   - **判定假 down 的 3 个依据**：
+     - 端点快照数据正常（`ContainerCount`/`RunningContainerCount` 正常、快照时间戳持续刷新）却 `Status=2`
+     - agent 存活：`curl https://dind-platform:9001/api/agent/version` 返回 `403 Missing request signature headers`（agent 正常鉴权、只接受 Server 带签名请求，403 恰恰证明 agent 活着可达）
+     - 强制快照 `POST /api/endpoints/{id}/snapshot` 后 `Status` 2→1 立即恢复
+   - **处理**：等一个快照周期（≤5min）自动恢复，或强制快照立即恢复；频繁折腾可调小 `Settings → Snapshot interval`（代价：所有环境快照变频繁）。判真 down 看快照时间戳是否停更（停更 = Server↔Agent 心跳断）。
 
 ---
 

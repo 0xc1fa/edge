@@ -4,11 +4,12 @@
 #   宿主 Docker ── 第1层
 #     ├─ portainer(Server)：不挂宿主 socket，只通过 Agent 连 dind → 宿主容器不可见
 #     ├─ registry-proxy：Docker Hub 代理缓存，dind 公共镜像自助拉取的唯一通道
+#     ├─ gitea / registry / registry-ui：代码托管 + 私有镜像仓库（全局，宿主层）
 #     └─ dind-platform：第2层 dockerd + GPU 卡0 穿透 → Portainer 的唯一环境
 #
 # 镜像供给链路：
 #   Docker Hub ──(宿主代理)──▶ registry-proxy(10.8.0.8:6000) ──▶ dind 内 test 自助拉取
-#   私有镜像 solar-server 等 ──▶ 10.8.0.8:5000（deAI infra，不在本 compose）
+#   私有镜像（CI 构建产物）──▶ 10.8.0.8:5000（本栈 registry）
 #   注意：dind 无外网（宿主透明代理只对本机进程生效），公共镜像必须经 registry-proxy
 #
 # 改进：
@@ -21,8 +22,6 @@
 # 注意：
 #   - 平台容器用 GPU 需穿透 /dev/nvidia* + 在 dind 内装 nvidia-container-toolkit
 #   - GPU 整卡透传（4090 无法切分），穿透卡0；如需卡1 改 /dev/nvidia1
-
-name: portainer
 
 services:
   # ---- 管理平面：Portainer Server（不挂宿主 socket）----
@@ -45,12 +44,12 @@ services:
     # 注意：portainer-ce:lts 镜像无 /bin/sh，不能使用 CMD-SHELL 健康检查；
     # 就绪检测由 auto-register 脚本内部轮询 API 完成
 
-  # ---- 公共镜像代理缓存：Docker Hub 代理，dind 自助拉取公共镜像的通道 ----
-  # 必须 host 网络：宿主透明代理只对宿主进程生效，容器网桥出网受限（回源失败），
-  # host 模式下 registry 直接监听宿主 6000（见 registry-proxy-config.yml http.addr）
+    # ---- 公共镜像代理缓存：Docker Hub 代理，dind 自助拉取公共镜像的通道 ----
+    # 必须 host 网络：宿主透明代理只对宿主进程生效，容器网桥出网受限（回源失败），
+    # host 模式下 registry 直接监听宿主 6000（见 registry-proxy-config.yml http.addr）
   registry-proxy:
     container_name: registry-proxy
-    image: registry:2
+    image: registry:2.8.3
     restart: always
     network_mode: host
     volumes:
@@ -58,6 +57,60 @@ services:
       - ./registry-proxy-config.yml:/etc/docker/registry/config.yml:ro
     environment:
       - TZ=Asia/Shanghai
+
+  # ---- 代码托管 + 私有镜像仓库（自 deAI/infra/devops 并入，复用原数据卷 devops_*）----
+  # 定位：全局基础设施，放宿主层，不进 dind，
+  #       避免镜像供给(6000 proxy 只代理 library)、资源配额(16c/32g)、生命周期耦合
+  # 访问：dind 内经 10.8.0.8:3100/5000 访问，daemon.json 已配 insecure-registries
+  # 数据卷显式命名复用原卷，迁移后旧数据（仓库/镜像）不丢
+  gitea:
+    container_name: gitea
+    image: gitea/gitea:1.23.8
+    restart: always
+    ports:
+      # Web 界面，避开 Grafana 的 3000
+      - "3100:3000"
+      # SSH 克隆（宿主机 :2222 → 容器 :22）
+      - "2222:22"
+    volumes:
+      - devops_gitea_data:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - TZ=Asia/Shanghai
+    networks:
+      - portainer-net
+
+  # 私有 Docker 镜像仓库（API，:5000），与 registry-proxy(:6000) 职责不同：
+  # 5000 私有镜像（CI push 目标），6000 Docker Hub 公共镜像代理（dind 拉取通道）
+  # host 网络：mihomo TUN 策略路由(ip rule 5270 lookup 52)会劫持 dockerd 的
+  # DNAT 后流量(目标172.22.0.6→物理网卡黑洞)，curl 走 local 递送不受影响；
+  # 改 host 网络后 daemon 经 local 递送直连，与 registry-proxy(:6000) 同理
+  registry:
+    container_name: registry
+    image: registry:2.8.3
+    restart: always
+    network_mode: host
+    volumes:
+      - devops_registry_data:/var/lib/registry
+      - ./registry-config.yml:/etc/docker/registry/config.yml:ro
+    environment:
+      - TZ=Asia/Shanghai
+
+  registry-ui:
+    container_name: registry-ui
+    image: joxit/docker-registry-ui:2.6.0
+    restart: always
+    ports:
+      - "5100:80"
+    environment:
+      # registry 已改 host 网络，走宿主地址（不再用服务名）
+      NGINX_PROXY_PASS_URL: "http://10.8.0.8:5000"
+      REGISTRY_URL: ""
+      DELETE_IMAGES: "true"
+      TZ: "Asia/Shanghai"
+    networks:
+      - portainer-net
 
   # ---- 平台隔离 Docker 环境（第2层 dockerd + GPU 卡0 穿透）----
   dind-platform:
@@ -107,7 +160,7 @@ services:
     networks:
       - portainer-net
     healthcheck:
-      test: ["CMD", "docker", "info"]
+      test: [ "CMD", "docker", "info" ]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -150,7 +203,7 @@ services:
   # ---- 自动注册：将 dind 环境注册到 Portainer（一次性任务，失败自动重试）----
   auto-register:
     container_name: portainer-auto-register
-    image: curlimages/curl:latest
+    image: curlimages/curl:8.21.0
     restart: on-failure:3
     depends_on:
       portainer:
@@ -166,7 +219,7 @@ services:
       - PORTAINER_PASSWORD_FILE=/run/secrets/portainer_admin_password
       - AGENT_ENDPOINT=dind-platform:9001
       - AGENT_NAME=dind-platform
-    entrypoint: ["/bin/sh", "/auto-register.sh"]
+    entrypoint: [ "/bin/sh", "/auto-register.sh" ]
     networks:
       - portainer-net
 
@@ -186,3 +239,8 @@ volumes:
     name: dind-platform-data
   registry-proxy-data:
     name: registry-proxy-data
+  # 代码托管/私有镜像仓库数据（复用 deAI/infra/devops 原卷，迁移数据不丢）
+  devops_gitea_data:
+    name: devops_gitea_data
+  devops_registry_data:
+    name: devops_registry_data
