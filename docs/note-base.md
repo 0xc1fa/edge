@@ -1,6 +1,28 @@
 # 网络 代理 下载
 
-## 🐛 Tailscale 与 Mihomo TUN 共存排障 260824
+## 🐛 Antigravity IDE 无响应 260825
+
+> 场景：Antigravity 对话报 network issue；API 实测 XFLTD 20 节点 delay 全 FAIL、订阅停 07-21（autoUpdate: false）且 API 403，但 Mac 同订阅正常。根因：「DNS 覆写总开关」开启 → GUI 模板整体替换订阅 dns 段 → 机场专属 DoH（proxy-server-nameserver）丢失 → 节点域名解析错位 → vless 握手失败。关闭开关后全部恢复。
+
+**机制**：mihomo 用 `proxy-server-nameserver` 解析**节点服务器域名**（非普通 `nameserver`）；机场节点是私有域名，只有机场专属 DoH 能解析到机场**当前中转 IP**，公共 DoH 解析出的 IP 与实况不符 → 握手必败。判据：节点全挂 ≠ 机场挂——端口有 HTTP 响应但 vless 握手失败、公共 DNS 能解析但 IP 不对，即「解析错位」。
+
+**DNS 覆写总开关 = dns 段整体接管开关**（260824 要开 / 260825 要关，互斥撞车，按当前主要矛盾切换）：
+
+- 开启：GUI 完整合并 DNS，`+.tailscale.com`/`+.ts.net` 进 fake-ip-filter → tailscale 域名真实解析
+- 关闭：保留订阅自带 dns 段 → 机场专属 DoH 存活 → 节点不挂
+
+**external-controller 踩坑（顺带）**：
+
+- 手改 `mihomo.yaml` **无效**：GUI 内存设置在合并时覆盖文件改动（`work/config.yaml` 仍旧值），须在 GUI「mihomo」内核设置页改
+- 9090 被 docker `infra-prometheus` 占用 → 核心静默回退 unix socket、curl 9090 返回 prometheus 版本号（假象）；改 9999 生效
+- API 验证：`curl -H 'Authorization: Bearer <secret>' http://127.0.0.1:9999/version`（不带 secret 返回 Unauthorized 属正常）
+- metacubexd 面板 mixed content：HTTPS 页禁访 HTTP 后端；本地 file:// 打开填 API 地址，或服务器部署 external-ui
+
+**节点/订阅诊断顺序**：节点 delay 全 FAIL → 先分「节点不可达」与「域名解析错位」；再查订阅能否拉取（403 = token 失效）；Mac 正常 ≠ Ubuntu 正常（token 时效/更新状态可不同）。
+
+---
+
+## 🐛 Tailscale 设备无法识别 260824
 
 > 场景：本机曾因「小火箭配置后连不上」卸载 Tailscale；重装后与 Mihomo（Clash Meta）TUN 模式共存，从控制面连不上 → DNS 劫持 → 数据面单向不通，最终用「覆盖脚本 + 策略路由」解决。
 
@@ -120,7 +142,7 @@ DNS 返回假地址               DNS 返回真实地址
 
 ---
 
-## 🐛 Antigravity IDE "working" 无响应排障 260824
+## 🐛 Antigravity IDE "working" 260824
 
 > 场景：Mac（小火箭）通过 Antigravity IDE 远程连接 Ubuntu 主机开发，关闭 TUN 后 AI 对话一直显示 "working" 卡死；设置 ~/.bashrc 代理变量无效；重开 TUN 恢复正常。
 
@@ -353,7 +375,7 @@ DNS 返回假地址               DNS 返回真实地址
 
 ---
 
-## 🐛 git push 报 HTTP2 framing layer 错误排障 260823
+## 🐛 git push 报 HTTP2 framing layer  260823
 
 > 问题：git push 报 `fatal: unable to access 'https://github.com/a6b0x/edge.git/': Error in the HTTP2 framing layer`，最初以为是提交失败。实为 commit 成功、push 失败；两种网络错误交替出现 = 通道不稳，最终配置本机代理解决。
 
