@@ -1,5 +1,56 @@
 # 网络 代理 下载
 
+## 🐛 BIOS 来电自启不生效 260826
+
+> 场景：HUANANZHI H12D-8D（AMD EPYC 单路，AMI BIOS 1.8 + AST2500 BMC 固件 1.01），BIOS 内 `AMD CBS → FCH Common Options → AC Power Loss Options = Always On`，断电来电后不自启动；BMC 侧 `Power Restore Policy: always-on` 亦已配置。定位结论：**断电时间过长把 BMC 彻底断电（SEL RTC 归零到 01/01/2012），BMC 冷启动路径上 AC Restore 逻辑失效**——配置对、策略对，但执行路径没触发。
+
+```text
+[排障链路 —— 从"看起来正常"到锁定根因]
+  │
+  ▼
+① BMC chassis status：Power Restore Policy: always-on
+   Last Power Event: ac-failed / System Power: on
+   → 初步误判：策略已生效、断电后已自启（错误）
+  ▼
+② 用户澄清：16:07 是手动开机（who -b = 2026-08-26 16:07）
+   → 修正认知：chassis status 的 on 只代表"当前已通电"
+     ≠ "断电后自动上电成功"
+  ▼
+③ 对时间线：
+   · last -x：上一会话（7/28→8/26）以 crash 结束、日志 8/26 01:17 戛然而止
+   · 即断电发生在 01:17 之后，来电到 16:07 手动开机间隔约 15 小时
+  ▼
+④ SEL 决定性证据：最后一批事件时间戳 = 01/01/2012 00:01:27
+   （风扇低速告警 + power off/down deasserted）
+   → BMC RTC 归零 = BMC 电源（含待机）+ RTC 后备电池全耗尽
+   → 来电后 BMC 从零冷启动，此时 AC Restore 上电逻辑没执行
+```
+
+**为什么配置对却不自启**（根因按可能性排序）：
+
+- **BMC 彻底断电后冷启动不执行 AC Restore**（主因，SEL RTC 归零为证）：always-on 策略虽存在 BMC Flash，但固件 1.01 的冷启动路径上电触发不可靠
+- **主板 CR2032 耗尽/缺失**：RTC 归零的直接原因；长时间断电时 BIOS 设置（含 AC Power Loss）也靠它保存，丢失即回默认 Power Off
+- **BMC 固件 1.01 过老**：冷启动 AC restore 类缺陷大概率未修
+- **BIOS 改动未冷启动写入 FCH**：AMD CBS 的 AC Power Loss 在 POST 早期读 FCH 寄存器，改完只热重启不生效，须拔电源 30 秒冷启动一次
+
+**修复步骤**（按顺序）：
+
+1. 关机断电，更换主板 CR2032 电池
+2. `ipmitool chassis policy always-on` → `ipmitool chassis status` 确认策略
+3. 分级断电实验定位：正常关机 → 断电 30 秒 → 插回 → 观察 1 分钟内是否自启；再做断电 5 分钟版——「短的自启、长的不自启」= 实锤 BMC 冷启动问题
+4. 华南金牌官网下载 H12D-8D 最新 BMC/BIOS 固件升级（1.01 过老）
+5. 兜底：智能排插/PDU 来电上电、WOL 网络唤醒、UPS+NUT 平滑关机（避免 BMC 被彻底断电）
+
+**关键认知**：
+
+- **Last Power Event: ac-failed ≠ 已自启**：只表示发生过 AC 断电；判断是否自启成功必须对时间线（`who -b`/`last` 启动时刻 vs 断电时刻），不能只看 chassis status 的 on
+- **BMC 也会被断电打死**：BMC 靠待机电源 + RTC 电池存活；断电时间足够长（BMC 死透）后 AC Restore 在冷启动路径上不可靠——"配置全对的服务器也不自启"的最常见隐藏根因
+- **SEL 时间戳归零是排障线索**：SEL 出现 01/01/2012 等远古时间戳 = BMC RTC 后备耗尽、BMC 曾完全掉电
+- **BIOS 与 BMC 是两套存储**：BIOS 设置存 CMOS/UEFI 变量（靠电池），BMC policy 存 BMC Flash（靠自身供电/电池）；一边可能丢失而另一边还在，必须两边核对
+- **分级断电实验是判定标尺**：短断（BMC 存活）自启、长断（BMC 死透）不自启 → 问题锁定在 BMC 冷启动路径，而非策略配置
+
+---
+
 ## 🐛 stacks 镜像代理服务异常 260826
 
 > 场景：断电重启后，stacks 中 `registry-proxy`（Docker Hub 代理缓存）重启 59 次、约 50 分钟不可用后自愈；其余 8 个服务全部正常。根因不是 Docker，而是「**外网 DNS 唯一来源 mihomo 是登录后才启动的 GUI 应用**」——自启 ≠ 开机启。
