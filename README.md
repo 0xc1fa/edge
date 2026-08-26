@@ -103,3 +103,21 @@ docker compose --profile qwen38 up -d     # 切到 Qwen3.8；切回用 coder
 docker compose --profile coder --profile qwen38 down
 cd /root/deAI/infra/ollama && docker compose up -d   # 回滚 Ollama
 ```
+
+## 监控服务
+
+```
+[启动监控栈] cd obs && docker compose up -d
+  │
+  ▼
+[访问]
+  ├─▶ Prometheus    http://127.0.0.1:9090
+  ├─▶ Grafana       http://127.0.0.1:3000（密码见 obs/.env）
+  └─▶ Alertmanager  http://127.0.0.1:9093（仅本机）
+  │
+  ▼
+[告警] 规则/模板/通知链路：见 obs/README.md
+  └─▶ 改告警模板/规则后：docker restart webhook-dingtalk（模板启动时加载）
+```
+
+- 编排/规则/模板在 `obs/`，含敏感信息（`obs/.env`、`obs/dingtalk.yml`）不入库

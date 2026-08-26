@@ -5,8 +5,7 @@
 ## 文件说明
 
 - `docker-compose.yml`：监控系统主编排文件。
-- `monitoring.env`：端口与 Grafana 管理员配置。
-- `monitoring.start.sh`：启动脚本。
+- `.env`：端口与 Grafana 管理员配置（compose 自动读取）。
 - `prometheus.yml`：Prometheus 抓取目标与 Alertmanager 配置。
 - `alert_rules.yml`：Prometheus 告警规则。
 - `alertmanager.yml`：告警路由与通知（webhook）配置。
@@ -19,17 +18,11 @@
 
 ## 启动方式
 
-推荐直接执行：
-
 ```bash
-bash /root/edge/obs/monitoring.start.sh
+cd /root/edge/obs && docker compose up -d
 ```
 
-如需手动启动：
-
-```bash
-docker compose --env-file /root/edge/obs/monitoring.env -f /root/edge/obs/docker-compose.yml up -d
-```
+> compose 自动读取同目录 `.env`（端口与 Grafana 管理员配置），无需 `--env-file` 或 source 脚本。
 
 ## 访问地址
 
@@ -37,13 +30,13 @@ docker compose --env-file /root/edge/obs/monitoring.env -f /root/edge/obs/docker
 - Grafana：`http://127.0.0.1:3000`
 - Alertmanager：`http://127.0.0.1:9093`（仅本机可访问）
 
-实际端口以 `monitoring.env` 中配置为准。
+实际端口以 `.env` 中配置为准。
 
-Grafana 默认账号密码也直接来自 [monitoring.env](file:///root/edge/obs/monitoring.env)。
+Grafana 默认账号密码也直接来自 `.env`。
 
 ## 配置方式
 
-本目录不再保留示例环境变量文件，直接维护现有的 [monitoring.env](file:///root/edge/obs/monitoring.env)。
+直接维护 `.env`（不入库，见根 `.gitignore`）。
 
 > 注意：本目录复用了原 `monitoring` 项目的数据卷（`monitoring_prometheus_data`、`monitoring_grafana_data`），迁移后历史指标与 Grafana 配置原样保留。
 

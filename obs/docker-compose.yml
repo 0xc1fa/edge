@@ -50,20 +50,25 @@ services:
     ports:
       # 只绑本机，方便查看告警 UI，不暴露公网。
       - "127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"
+    extra_hosts:
+      # 让 alertmanager 能访问宿主机上的 webhook-dingtalk（host 网络服务）。
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
 
   webhook-dingtalk:
     # 将 Alertmanager 告警转为钉钉群机器人消息的桥接服务。
-    # 端口不映射宿主机：仅 Alertmanager 经 Docker 网络内访问（webhook-dingtalk:8060）。
+    # 使用 host 网络：容器直连钉钉 API 需走宿主 mihomo 分流（TUN fake-ip 会拦截容器流量导致超时）。
     image: timonwong/prometheus-webhook-dingtalk:v2.1.0
     container_name: webhook-dingtalk
     restart: unless-stopped
+    network_mode: host
     command:
       - --web.listen-address=:8060 # 监听端口
       - --config.file=/etc/prometheus-webhook-dingtalk/config.yml # 钉钉机器人配置
     volumes:
       - ./dingtalk.yml:/etc/prometheus-webhook-dingtalk/config.yml:ro
+      - ./template:/etc/prometheus-webhook-dingtalk/template:ro
 
   node-exporter:
     # 采集宿主机 CPU、内存、磁盘等系统指标。

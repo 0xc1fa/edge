@@ -1,0 +1,16 @@
+{{- define "obs-alert.title" -}}
+{{- if .Alerts.Firing -}}监控告警{{- else -}}告警恢复{{- end -}}
+{{- end -}}
+
+{{- define "obs-alert.message" -}}
+{{- if .Alerts.Firing -}}
+{{- range .Alerts.Firing }}
+**{{ .Labels.alertname }}**
+{{ .Annotations.summary }}
+{{- end }}
+{{- else -}}
+{{- range .Alerts.Resolved }}
+**{{ .Labels.alertname }}** 已恢复
+{{- end }}
+{{- end -}}
+{{- end -}}

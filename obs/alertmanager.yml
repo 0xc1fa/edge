@@ -14,6 +14,6 @@ route:
 receivers:
   - name: "default-webhook"
     webhook_configs:
-      # 经 webhook-dingtalk 桥接转发到钉钉群机器人。
-      - url: "http://webhook-dingtalk:8060/dingtalk/obs-alert/send"
+      # 经 webhook-dingtalk 桥接转发到钉钉群机器人（桥接为 host 网络，经宿主机访问）。
+      - url: "http://host.docker.internal:8060/dingtalk/obs-alert/send"
         send_resolved: true
