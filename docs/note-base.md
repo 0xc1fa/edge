@@ -1,5 +1,139 @@
 # 网络 代理 下载
 
+## 🐛 stacks 镜像代理服务异常 260826
+
+> 场景：断电重启后，stacks 中 `registry-proxy`（Docker Hub 代理缓存）重启 59 次、约 50 分钟不可用后自愈；其余 8 个服务全部正常。根因不是 Docker，而是「**外网 DNS 唯一来源 mihomo 是登录后才启动的 GUI 应用**」——自启 ≠ 开机启。
+
+```text
+[排障链路 —— 定位异常服务]
+  │
+  ▼
+① docker compose ps -a：其余 8 服务全 "Up About an hour"
+   registry-proxy 独独 "Up 10 minutes" → 最近重启过
+  ▼
+② docker inspect：RestartCount=59（restart: always 反复拉起）
+  ▼
+③ 日志定性：panic: Get "https://registry-1.docker.io/v2/":
+   dial tcp: lookup registry-1.docker.io on 127.0.0.53:53: server misbehaving
+   → DNS 解析失败 → registry 镜像 proxy 模式启动强制回源探测，失败 panic 不重试
+  ▼
+④ 现状自愈：GET /v2/ → HTTP 200；dind 内 9 容器全正常
+   → 判定为开机时序竞态，非配置/数据损坏
+```
+
+```text
+[根因拆解 —— 为什么 DNS 会挂 50 分钟]
+  │
+  ▼
+① 物理网卡（enp193s0/194s0）：Current Scopes: none，无任何 DNS 上游
+  ▼
+② 外网 DNS 唯一来源：mihomo TUN fake-ip DNS（198.18.0.2）
+  ▼
+③ Tailscale MagicDNS（100.100.100.100）只管 tailnet 内网域名
+  ▼
+④ mihomo-party 是 GUI 会话级应用：
+   · systemctl list-unit-files → 无 mihomo 系统服务
+   · /etc/xdg/autostart、~/.config/autostart → 无 mihomo 条目
+   · 两次开机均在「用户登录后」以 scope 启动（07-28 09:55 / 08-26 16:57）
+  ▼
+⑤ 结论：GUI「开机自启」选项 = XDG autostart/login item 类机制，
+   只在桌面会话建立（登录）时执行；无登录的纯开机阶段不触发
+  ▼
+⑥ 因果链：断电 → 16:07 开机（无人登录）→ 容器 16:07:18 拉起
+   → 无外网 DNS → registry-proxy panic → 重启风暴 59 次
+   → 16:56 用户 xrdp 登录 → 16:57 mihomo 起 → 16:58 proxy 恢复
+```
+
+**08-26 时间线**（时区 +0800）：
+
+```text
+16:07:07  系统启动，systemd-resolved 就绪（无可用外网上游）
+16:07:08  tailscaled 启动（warming-up，MagicDNS 未就绪）
+16:07:14  dockerd 启动
+16:07:18  restart:always 立即拉起 registry-proxy
+16:07:2x  回源探测 → 解析失败 → panic（127.0.0.53 server misbehaving）
+16:07~16:57  指数退避重启 ×59（约 50 分钟）
+16:56:57  xrdp 登录（MacBook24）
+16:57:00  mihomo-party 随会话启动（app-mihomo-party scope）
+16:57:01  Mihomo TUN 激活，resolved 上游切为 198.18.0.2
+16:58:18  registry-proxy 最后一次重启，回源成功 → 恢复
+```
+
+**为什么 9 个服务只有 registry-proxy 挂**：它启动时强制依赖外网（`proxy.remoteurl` 回源探测 Docker Hub）；5000 私有 registry 无 proxy 配置、portainer/gitea/registry-ui/port-forward 仅监听端口、dind 的 dockerd 不依赖外网（内部应用按需拉镜像、非开机动作），故全部不受影响。
+
+**物理网卡配 DNS 能解决吗**：
+
+> 用户质疑：「物理网卡不是配的 DNS 么」——若真配了 DNS，问题就只出在解析层，补个 DNS 即可解决。
+
+```text
+[核实 —— 物理网卡 DNS 配置三查]
+  │
+  ▼
+① NetworkManager 连接文件（Wired connection 1.nmconnection，enp193s0）：
+   address1=10.8.0.8/24,10.8.0.1 / method=manual
+   → 只有静态 IP + 网关，无 dns= 字段（亦无 dns-search / ignore-auto-dns）
+  ▼
+② netplan（01-network-manager-all.yaml）：仅 4 行转交 NetworkManager，无 DNS
+  ▼
+③ resolvectl status：enp193s0/enp194s0 均 Current Scopes: none、无 DNS Server
+  ▼
+④ 印象来源：曾用 resolvectl dns <网卡> 223.5.5.5 等运行时命令临时配过 → 重启即丢
+   （本次开机 journalctl 无 set-dns 记录；静态 IP+网关 ≠ DNS，10.8.0.1 是路由下一跳）
+```
+
+```text
+[分析 —— 配 DNS 为什么不是方案]
+  │
+  ▼
+① 物理网卡有默认路由（main 表 default via 10.8.0.1）
+   → 配 DNS 后解析层必通（不再报 127.0.0.53 server misbehaving）
+  ▼
+② 但 registry-proxy 回源是两步：DNS 解析 + TCP 连接 registry-1.docker.io:443
+  ▼
+③ 本机访问 Docker Hub 必须走代理（note-base 多起排障佐证：vLLM 5.2GB 镜像、
+   git push、AI API 均需代理出网）→ 物理网卡直连连接层大概率仍失败
+  ▼
+④ 配 DNS 后失败形态改变：lookup server misbehaving → dial tcp timeout，
+   重启风暴照旧 → 问题没解决
+  ▼
+⑤ 验证方法（mihomo 停止时）：
+   curl -v --connect-timeout 8 https://registry-1.docker.io/v2/
+   能握手 → 配 DNS 可根治；卡 TCP → 仅兜底，根治仍靠 mihomo 开机即起（方案1/2）
+```
+
+**关键认知（延伸）**：
+
+- **静态 IP+网关 ≠ DNS**：`address1=10.8.0.8/24,10.8.0.1` 的 10.8.0.1 是路由下一跳，不是 DNS 服务器；网卡没有 DNS 字段就是没有 DNS，手动模式（非 DHCP）更不会自动下发
+- **resolvectl dns 是运行时命令**：不落盘、重启即丢；持久化须写 NetworkManager 连接（`nmcli connection modify`）或 netplan
+- **解析层 ≠ 连接层**：配 DNS 只解决「域名→IP」；直连被墙时 panic 只是换个错误形态（lookup → dial tcp timeout），重启风暴照旧
+- **方案判定标准**：不改变失败结果（重启风暴依旧）的改动不算方案，只算兜底；解析兜底价值有限（apt/国内源可用），外网连接仍依赖 mihomo 开机即起
+
+**服务化可行性**（支撑后续方案）：`/opt/clash-party/resources/sidecar/mihomo` 为独立内核二进制（另有 -alpha/-smart），配置在 `/home/user/.config/mihomo-party/mihomo.yaml`——两个方案都只需「内核 + 配置」跑成服务，GUI 可不再常驻。
+
+```text
+[方案权衡 —— 让 mihomo 真正开机即启]
+  ├─▶ 方案1：systemd 系统服务（/etc/systemd/system/mihomo.service）
+  │     · root 身份 / PID 1 管理 / 开机最早一批 / 完全无关登录
+  │     · 管理：sudo systemctl enable --now；日志：journalctl -u
+  │     └─▶ [采纳倾向] 本机是无头服务器 + 机器级依赖，root 跑内核最稳
+  ├─▶ 方案2：systemd 用户服务 + linger（~/.config/systemd/user/）
+  │     · user 身份 / 默认仅登录会话存活期运行
+  │     · loginctl enable-linger user 后无登录也开机即起
+  │     · 管理：systemctl --user；日志：journalctl --user -u
+  │     → 优势「配置跟随用户」在本机无体现，适用性弱于方案1
+  └─▶ 共同注意：服务化后 GUI 版不能再自启，否则双内核抢 TUN / 7890 / 9090
+```
+
+**关键认知**：
+
+- **registry 镜像 proxy 模式的脆弱点**：启动时强制同步回源探测 `proxy.remoteurl`，DNS 失败直接 panic、不重试、不降级——这是它区别于同栈其他服务的唯一脆弱点
+- **restart: always 放大崩溃**：把单次 panic 变成 59 次重启风暴；「自愈」本质是网络恢复后某次重启碰巧成功，不是 Docker 在修复
+- **自启 ≠ 开机启**：GUI 应用的"开机自启"（XDG autostart/login item）只在桌面会话建立时触发；无头服务器要让服务开机即起必须用 systemd（系统服务或 user+linger）
+- **外网 DNS 单点隐患**：本机物理网卡无 DNS 上游，外网解析完全依赖 mihomo（198.18.0.2 fake-ip）；mihomo 不在 = 所有需要外网的服务全挂；Tailscale MagicDNS 只管 tailnet 内网域名，救不了外网
+- **时序竞态判定法**：对比各服务启动时间（compose ps 的 Up 时长差异）+ 崩溃日志的 DNS 报错 + 恢复时间点前后的系统事件（登录 / mihomo scope 启动），三者对齐即锁定根因
+
+---
+
 ## 🐛 无法连接 Tailscale 设备 260825
 
 > 场景：Mac（小火箭 Shadowrocket 路由模式接入 tailnet）ping Linux agent（100.69.186.2）全部 Request timeout；管理界面两设备均在线。最终解法：删除小火箭旁路路由 `100.64.0.0/10`；随后补开 MagicDNS 实现机器名访问。
