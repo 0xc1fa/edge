@@ -1,5 +1,105 @@
 # 网络 代理 下载
 
+## ⚖️ 服务器代理选型 260826
+
+> 场景：Mihomo Party（GUI + Smart 内核）作为本机唯一外网出口；远程开发场景（VSCode Remote + Antigravity IDE），Smart 规则体感不好用，需要对 Gemini/OpenAI 等做精细地区分流。
+
+Smart 规则为什么不好用——根因
+
+```text
+[诊断链路]
+  │
+  ▼
+① 日志满是：[Smart] Maximum file size limit reached (100 MB), stopping data collection
+   → smart_weight_data.csv 超 100MB，数据采集停止
+   → Smart 用过时模型决策，退化成比 url-test 更差的随机选择
+  ▼
+② 本质矛盾：依赖不可知性
+   访问 aistudio.google.com 时同时触发：
+     accounts.google.com / lh3.googleusercontent.com /
+     fonts.googleapis.com / ssl.gstatic.com / apis.google.com
+   → 手工穷举不现实；Smart 需要先"失败"才能学，体验差
+  ▼
+③ 规则粒度问题
+   DOMAIN-KEYWORD,google,XFLTD  → 太宽泛，误伤概率高
+   DOMAIN-SUFFIX,xxx.com,DIRECT → 太具体，子域名漏匹配
+```
+
+**Smart 数据采集修复（治标）**：
+
+```bash
+# 清空让 Smart 重新学习（会丢失历史）
+> /home/user/.config/mihomo-party/work/smart_weight_data.csv
+# 然后在 Mihomo Party GUI 重启内核
+```
+
+替换决策
+
+```text
+[条件权衡]
+  ├─▶ 需要 GUI 坐在面前操作？→ 否（纯远程 SSH/VSCode Remote）
+  ├─▶ Smart 自动学习有价值？→ 否（已停止采集，且不如精细规则）
+  ├─▶ 核心需求？            → 精细地区分流（Gemini→港区，OpenAI→美区）
+  └─▶ 愿意持续精调？        → 是
+         ↓
+  ✅ 结论：替换为 CLI Mihomo + systemd
+     GUI（Mihomo Party Electron）的优势在本场景完全用不上
+     内核、规则、订阅配置全部复用，只去掉 Electron 壳
+```
+
+
+| 维度                   |      Mihomo Party      |   CLI Mihomo + systemd   |
+| ---------------------- | :---------------------: | :-----------------------: |
+| 系统级自启（无需登录） | ❌ 绕路（GDM 自动登录） |          ✅ 原生          |
+| Smart 功能             |      ❌ 已停止采集      |         ➖ 不需要         |
+| 精细分流规则           |           ✅           |        ✅ 完全一样        |
+| 远程管理               |       需 GUI 转发       |   ✅ 浏览器访问 Web UI   |
+| 资源占用               |   ~300MB（Electron）   |           ~20MB           |
+| 订阅管理               |        GUI 内置        | sub-store Docker 独立部署 |
+
+
+分流设计原则
+
+```text
+三层防护架构：
+  第一层：社区 rule-providers（覆盖 95% 常见服务，零维护）
+    RULE-SET,google  → ✨ Gemini/Google AI
+    RULE-SET,openai  → 🤖 OpenAI/Claude
+    RULE-SET,github  → 🔧 开发工具
+
+  第二层：时序日志聚类自动发现（覆盖私有/长尾服务）
+    思路：访问某站时 5s 窗口内的所有请求 = 其依赖域名
+    工具：logcluster --seed aistudio.google.com --gen-rules
+
+  第三层：兜底全代理（最关键，消灭子域名漏匹配）
+    GEOSITE,CN,DIRECT   # 国内走直连
+    MATCH,XFLTD         # 其余一律走代理（非 DIRECT）
+```
+
+**地区分组策略**（依据各平台访问限制）：
+
+
+| 代理组                | 适用地区                | 原因                          |
+| --------------------- | ----------------------- | ----------------------------- |
+| `✨ Gemini/Google AI` | 香港优先                | 港区延迟最低且 Google AI 可用 |
+| `🤖 OpenAI/Claude`    | 美/日/新/加（排除香港） | 港区 IP 被 OpenAI 大量封锁    |
+| `🔧 开发工具`         | 香港/新加坡（自动测速） | 低延迟即可，无地区限制        |
+
+
+
+当前已实施
+
+- **Override JS**（`/home/user/.config/mihomo-party/override/ai-dev-rules.js`）：注入 3 个代理组 + 51 条精确规则，覆盖 Antigravity IDE 云端 / Gemini / OpenAI / Claude / GitHub / Docker Hub / npm / pip / VSCode
+- **待做**：`MATCH,DIRECT` → `MATCH,XFLTD`（兜底策略）；Override 需在 Mihomo Party GUI 重新应用订阅才生效
+
+关键认知
+
+- **自启 ≠ 开机启**：Mihomo Party 的"开机自启"= XDG autostart，只在桌面会话建立（登录）后触发；本机靠 GDM 自动登录绕路，真正的无人值守需 systemd 系统服务
+- **外网 DNS 单点隐患**：物理网卡无 DNS 上游，外网解析完全依赖 mihomo TUN（198.18.0.2 fake-ip）；mihomo 不在 = 所有需要外网的服务全挂
+- **依赖发现的时序思路**：访问一个页面时，短时间窗口（5s）内同时出现的域名即为其依赖；从日志时序聚类比手工枚举子域名更可靠
+
+---
+
 ## 🐛 BIOS 来电自启不生效 260826
 
 > 场景：HUANANZHI H12D-8D（AMD EPYC 单路，AMI BIOS 1.8 + AST2500 BMC 固件 1.01），BIOS 内 `AMD CBS → FCH Common Options → AC Power Loss Options = Always On`，断电来电后不自启动；BMC 侧 `Power Restore Policy: always-on` 亦已配置。定位结论：**断电时间过长把 BMC 彻底断电（SEL RTC 归零到 01/01/2012），BMC 冷启动路径上 AC Restore 逻辑失效**——配置对、策略对，但执行路径没触发。
