@@ -1,5 +1,47 @@
 # obs 监控
 
+## 📈  vLLM 指标接入综合面板 260827
+
+**GPU 告警规则优化（消除告警疲劳）**
+
+```text
+原规则                                 → 处置
+GPU显存占用>90%（warning）               ✖ 删除：vLLM(--gpu-memory-utilization=0.80)常驻下 90%+ 是常态，曾连续 fire 24h
+GPU利用率过低（<10% for 1h）            ✖ 删除：vLLM 空闲时利用率本就不高
+GPU温度>85℃                            → 88℃(warning, for 10m) / 92℃(critical, for 5m)
+新增 GPU 可用显存<1GB                    ✓ critical, for 5m（真正危险的"耗尽"信号）
+```
+
+- 教训：阈值定在"常态线"上才会告警疲劳——设计规则先问"什么状态才真正异常"，而不是"什么值看起来高"。vLLM 场景下显存占用高、温度高都是稳态，不是故障。当前 4 条 GPU 规则 0 firing。
+
+**vLLM 指标接入**
+
+```text
+prometheus.yml 新增 job: vllm
+  scrape_interval 15s, metrics_path /metrics
+  targets: ["172.18.0.1:18000"]   ← docker 网关 IP，零依赖
+  metric_relabel_configs: "^vllm:(.+)$" → "vllm_$1"（冒号指标名转下划线）
+```
+
+- **选型：抓取地址用 docker 网关 `172.18.0.1` 而非 `host.docker.internal`**——后者需给 prometheus 容器加 `extra_hosts` 并重建，前者零依赖（vLLM 端口已映射到宿主机），直接可用。
+- vLLM 自带指标名含冒号（`vllm:engine_sleep_state` 等），Prometheus 常规指标名不允许冒号，用 `metric_relabel_configs` 重写为 `vllm_*`。
+- 4 条 vLLM 告警：引擎休眠（`weights_offloaded`/`discard_all`，critical 2m）、请求积压（`vllm_num_requests_waiting>20`，5m）、请求错误（`increase(vllm_request_success_total{finished_reason="error"}[5m])>0`，1m）、KV cache 紧张（`vllm_kv_cache_usage_perc>95`，10m）。
+
+**Grafana 综合面板（uid `obs-vllm-gpu`）**
+
+- provisioning 热更新：`datasources/prometheus.yml` + `dashboards.yml`，面板 JSON 放 `obs/dashboards/`，改动 **30s 内自动加载**，无需重启。
+- **面板目录策略**：provider `foldersFromFilesStructure: false`、不建 Obs 文件夹，面板直接进 General——用户侧好找好维护。
+- 布局迭代：顶部瞬时卡片区 → 样式按指标类型差异化（stat 背景色块 / 面积图 / 柱状图 / 扇形图）；扇形图独立成行、给足宽度；下方趋势图按 3+2 排布压缩高度（曾压缩 4 行卡片 → 3 行，总高 66 → 46）。
+- **gauge 扇形图美观三要素**（对照 Grafana 自带 Node Exporter Full / DCGM 面板）：
+  1. `showThresholdLabels: false`——窄卡里刻度标签数字挤在弧线上是视觉元凶，保留 `showThresholdMarkers`
+  2. `sizing: "auto"`——Grafana v12 已弃用 `text.titleSize/valueSize` 旧字段
+  3. 宽度给足：扇形图独立成行，不塞 1/4 行宽窄卡
+- 展示取舍：删除请求错误率、GPU 编解码利用率、运行进程数三个低价值面板，兼顾信息密度与可读性。
+- 网络卡：速率 `rate()` → 累计总量 `sum(node_network_{receive,transmit}_bytes_total{device!~"lo|veth.*|br-.*|docker.*|tun.*"})`，单位 `decbytes` 自动换算 TB，`graphMode: area`；GPU 温度卡同样改扇形图，四个扇形图（负载/显存/温度/vLLM 运行）一行排列。
+- 主机运行卡挪入卡片区第 2 行后，原位置由 vLLM 排队卡补位——保持每行 4 张的紧凑布局。
+
+---
+
 ## 🔔 通过钉钉接收告警通知 260826
 
 ```text

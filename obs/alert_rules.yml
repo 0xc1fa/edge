@@ -61,29 +61,73 @@ groups:
   - name: obs-gpu-alerts
     rules:
       - alert: GPU温度过高
-        # 4090 长时间高温会影响稳定性，先用 85 度做预警阈值。
-        expr: DCGM_FI_DEV_GPU_TEMP > 85
+        # RTX 4090 满载（vLLM 常驻）时 85°C 左右是常态，原 85°C 阈值会持续误报。
+        # warning 提到 88°C（散热紧张/持续高负载），critical 92°C 逼近降频线再升级。
+        expr: DCGM_FI_DEV_GPU_TEMP > 88
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "GPU {{ $labels.gpu }} 温度超 85 度"
+          summary: "GPU {{ $labels.gpu }} 温度超 88 度"
 
-      - alert: GPU显存占用过高
-        # 分母 = USED + FREE + RESERVED（总显存），避免缺 RESERVED 导致占比虚高。
-        expr: (DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE + DCGM_FI_DEV_FB_RESERVED)) * 100 > 90
+      - alert: GPU温度严重过高
+        expr: DCGM_FI_DEV_GPU_TEMP > 92
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "GPU {{ $labels.gpu }} 温度超 92 度，逼近降频线"
+
+      # 原"GPU显存占用过高(>90%)"已删除：vLLM(--gpu-memory-utilization=0.80)常驻下
+      # 必然长期触发，造成告警疲劳；真实容量水位改由 vllm:kv_cache_usage_perc 监控（接入 vLLM 指标时补充）。
+      # 此处保留最后一层保护：常态 vLLM 预留 20% 剩余不会触发，仅当可用显存被挤到 <1GiB
+      # （异常进程抢占、CUDA OOM 前兆）时以 critical 告警。DCGM_FB 系列单位为字节。
+      - alert: GPU显存几乎耗尽
+        expr: DCGM_FI_DEV_FB_FREE < 1073741824
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "GPU {{ $labels.gpu }} 可用显存低于 1GB"
+
+      # 原"GPU利用率过低"已删除：vLLM 空闲待机时显存高占用、低利用率是正常状态，会误报服务异常。
+      # 服务可用性改由 vLLM /health 探活与请求指标监控（接入 vLLM 指标时补充）。
+
+  - name: obs-vllm-alerts
+    rules:
+      - alert: vLLM引擎休眠
+        # engine_sleep_state 三态互斥（awake/weights_offloaded/discard_all），值为 1 表示处于该状态。
+        # 权重被卸载或缓存被丢弃时推理服务不可用（恢复需重新加载权重），直接告警。
+        expr: (vllm_engine_sleep_state{sleep_state="weights_offloaded"} == 1) or on(engine) (vllm_engine_sleep_state{sleep_state="discard_all"} == 1)
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "vLLM 引擎休眠，推理不可用"
+
+      - alert: vLLM请求积压
+        # 队列中等待的请求数持续过高，说明并发打满/容量不足，用户请求开始排队。
+        expr: vllm_num_requests_waiting > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "vLLM 请求积压 {{ $value }} 个"
+
+      - alert: vLLM请求错误
+        # 5 分钟内出现以 error 结束的请求（模型异常/输入非法/引擎错误）。
+        expr: increase(vllm_request_success_total{finished_reason="error"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "vLLM 5 分钟内出现 {{ $value }} 次推理错误"
+
+      - alert: vLLM KV缓存紧张
+        # KV cache 是推理并发上限，持续 >95% 意味着接近容量极限，可能出现 preemption/排队。
+        expr: vllm_kv_cache_usage_perc > 95
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "GPU {{ $labels.gpu }} 显存占用超 90%"
-
-      - alert: GPU利用率过低
-        # 显存占用 >50%（有模型驻留）但利用率 <50% 持续 15 分钟，视为服务异常/空闲；
-        # 机器空闲（显存低）时不触发，避免误报。
-        expr: (DCGM_FI_DEV_GPU_UTIL < 50) and on(gpu) (DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE + DCGM_FI_DEV_FB_RESERVED)) * 100 > 50
-        for: 15m
-        labels:
-          severity: warning
-        annotations:
-          summary: "GPU {{ $labels.gpu }} 显存占用高但利用率低"
+          summary: "vLLM KV cache 使用率 {{ $value }}% 超 95%"

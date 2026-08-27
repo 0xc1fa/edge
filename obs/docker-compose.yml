@@ -37,6 +37,9 @@ services:
       - grafana_data:/var/lib/grafana
       # 启动时自动注入 Prometheus 数据源。
       - ./grafana-datasource.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
+      # 自动加载 ./dashboards/ 下的面板（改 JSON 即热更新）。
+      - ./dashboards.yml:/etc/grafana/provisioning/dashboards/obs.yml:ro
+      - ./dashboards:/etc/grafana/dashboards:ro
 
   alertmanager:
     # Alertmanager 负责接收 Prometheus 告警并按路由通知。

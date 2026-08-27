@@ -63,7 +63,7 @@ services:
       - --model=/models/Qwen3-Coder-30B-A3B-Instruct-AWQ # 模型权重路径
       - --tensor-parallel-size=2 # 双卡张量并行
       - --max-model-len=65536 # 最大上下文 64K
-      - --gpu-memory-utilization=0.80 # 显存利用率,留20%给CUDA context/矿机容器(kryptex forge 绑定 GPU0)
+      - --gpu-memory-utilization=0.80 # 显存利用率,留20%给CUDA context/同机其他 GPU 容器
       - --dtype=auto # 自动匹配模型量化格式(AWQ)
       - --served-model-name=qwen3-coder-30b # 对外模型名,Open WebUI用此名选择
       - --enable-prefix-caching # 前缀缓存,多轮对话更快

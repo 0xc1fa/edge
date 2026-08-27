@@ -33,3 +33,20 @@ scrape_configs:
   - job_name: dcgm-exporter
     static_configs:
       - targets: ["dcgm-exporter:9400"]
+
+  # vLLM 推理服务指标（容器 vllm-qwen36，宿主映射 18000->8000）。
+  # 地址用 docker 网关 172.18.0.1（Prometheus 所在 obs_default 网络的宿主侧网关），
+  # 不依赖 wireguard/TUN（10.8.0.8）等外部链路，网络稳定；
+  # 如需改成 host.docker.internal 域名形式，需先给 prometheus 加 extra_hosts 并重建容器。
+  - job_name: vllm
+    scrape_interval: 15s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["172.18.0.1:18000"]
+    metric_relabel_configs:
+      # vLLM 指标名带冒号前缀（vllm:xxx），Prometheus 虽然支持冒号，
+      # 但部分下游（Grafana/文本查询）兼容性差，统一改成 vllm_xxx。
+      - source_labels: [__name__]
+        regex: "^vllm:(.+)$"
+        target_label: __name__
+        replacement: "vllm_$1"

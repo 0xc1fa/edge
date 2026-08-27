@@ -1,0 +1,13 @@
+# Grafana 启动时自动加载 ./dashboards/ 下的面板（综合面板，归入 General，不建文件夹）。
+apiVersion: 1
+
+providers:
+  - name: obs
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30 # 允许文件修改后自动热更新（编辑文件即生效）
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false
