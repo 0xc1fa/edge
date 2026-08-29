@@ -9,10 +9,10 @@
 GPU显存占用>90%（warning）               ✖ 删除：vLLM(--gpu-memory-utilization=0.80)常驻下 90%+ 是常态，曾连续 fire 24h
 GPU利用率过低（<10% for 1h）            ✖ 删除：vLLM 空闲时利用率本就不高
 GPU温度>85℃                            → 88℃(warning, for 10m) / 92℃(critical, for 5m)
-新增 GPU 可用显存<1GB                    ✓ critical, for 5m（真正危险的"耗尽"信号）
+GPU 可用显存<1GB（critical）            ✖ 删除：0.90 利用率 + 挖矿 ~1.4GB/卡 下 free 常态 ~290MiB，必然误报（260828）
 ```
 
-- 教训：阈值定在"常态线"上才会告警疲劳——设计规则先问"什么状态才真正异常"，而不是"什么值看起来高"。vLLM 场景下显存占用高、温度高都是稳态，不是故障。当前 4 条 GPU 规则 0 firing。
+- 教训：阈值定在"常态线"上才会告警疲劳——设计规则先问"什么状态才真正异常"，而不是"什么值看起来高"。vLLM 场景下显存占用高、温度高都是稳态，不是故障。当前 3 条 GPU 规则 0 firing。
 
 **vLLM 指标接入**
 
@@ -25,7 +25,7 @@ prometheus.yml 新增 job: vllm
 
 - **选型：抓取地址用 docker 网关 `172.18.0.1` 而非 `host.docker.internal`**——后者需给 prometheus 容器加 `extra_hosts` 并重建，前者零依赖（vLLM 端口已映射到宿主机），直接可用。
 - vLLM 自带指标名含冒号（`vllm:engine_sleep_state` 等），Prometheus 常规指标名不允许冒号，用 `metric_relabel_configs` 重写为 `vllm_*`。
-- 4 条 vLLM 告警：引擎休眠（`weights_offloaded`/`discard_all`，critical 2m）、请求积压（`vllm_num_requests_waiting>20`，5m）、请求错误（`increase(vllm_request_success_total{finished_reason="error"}[5m])>0`，1m）、KV cache 紧张（`vllm_kv_cache_usage_perc>95`，10m）。
+- 5 条 vLLM 告警：收到请求通知（`vllm_num_requests_running + vllm_num_requests_waiting > 0`，info 0m——低用量下当使用记录，260828 新增）、引擎休眠（`weights_offloaded`/`discard_all`，critical 2m）、请求积压（`vllm_num_requests_waiting>1`，2m——max-num-seqs=4 下排队>1 即容量饱和，原 >20 太钝，260828 收紧）、请求错误（`increase(vllm_request_success_total{finished_reason="error"}[5m])>0`，1m）、KV cache 紧张（`vllm_kv_cache_usage_perc>95`，10m）。
 
 **Grafana 综合面板（uid `obs-vllm-gpu`）**
 

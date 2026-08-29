@@ -78,20 +78,11 @@ groups:
         annotations:
           summary: "GPU {{ $labels.gpu }} 温度超 92 度，逼近降频线"
 
-      # 原"GPU显存占用过高(>90%)"已删除：vLLM(--gpu-memory-utilization=0.80)常驻下
-      # 必然长期触发，造成告警疲劳；真实容量水位改由 vllm:kv_cache_usage_perc 监控（接入 vLLM 指标时补充）。
-      # 此处保留最后一层保护：常态 vLLM 预留 20% 剩余不会触发，仅当可用显存被挤到 <1GiB
-      # （异常进程抢占、CUDA OOM 前兆）时以 critical 告警。DCGM_FB 系列单位为字节。
-      - alert: GPU显存几乎耗尽
-        expr: DCGM_FI_DEV_FB_FREE < 1073741824
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "GPU {{ $labels.gpu }} 可用显存低于 1GB"
-
+      # 原"GPU显存几乎耗尽(<1GiB)"已删除：vLLM(--gpu-memory-utilization=0.90, TP2)
+      # 常驻预占 ~22.4GB/卡，叠加同机挖矿容器 ~1.4GB/卡，free 常态仅 ~290MiB，
+      # <1GiB 必然长期触发（误报）。真实容量水位由 vllm_kv_cache_usage_perc 与请求积压监控。
       # 原"GPU利用率过低"已删除：vLLM 空闲待机时显存高占用、低利用率是正常状态，会误报服务异常。
-      # 服务可用性改由 vLLM /health 探活与请求指标监控（接入 vLLM 指标时补充）。
+      # 服务可用性改由 vLLM /health 探活与请求指标监控。
 
   - name: obs-vllm-alerts
     rules:
@@ -104,15 +95,6 @@ groups:
           severity: critical
         annotations:
           summary: "vLLM 引擎休眠，推理不可用"
-
-      - alert: vLLM请求积压
-        # 队列中等待的请求数持续过高，说明并发打满/容量不足，用户请求开始排队。
-        expr: vllm_num_requests_waiting > 20
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "vLLM 请求积压 {{ $value }} 个"
 
       - alert: vLLM请求错误
         # 5 分钟内出现以 error 结束的请求（模型异常/输入非法/引擎错误）。

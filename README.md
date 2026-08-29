@@ -104,6 +104,50 @@ docker compose --profile coder --profile qwen38 down
 cd /root/deAI/infra/ollama && docker compose up -d   # 回滚 Ollama
 ```
 
+## 资源枢纽
+
+```
+[启动] ① cd hub && docker compose up -d
+  │
+  ▼
+[检查] ② 三容器 up · PG/Redis healthy
+  │
+  ▼
+[访问] http://<宿主IP>:18080
+  ├─▶ 首次 ──▶ 引导创建管理员账号
+  └─▶ 控制台 ──▶ 配渠道 / 发令牌（见 hub/README.md）
+  │
+  ▼
+[渠道池] 按优先级调度：本地 vLLM :18000 ─▶ 免费额度 ─▶ 付费兜底
+  │
+  ▼
+[使用] 客户端指向 :18080/v1 + 令牌 sk-xxx
+  │
+  ▼
+[停止] ③ docker compose down
+```
+
+| 服务       | 地址                    |
+| ---------- | ----------------------- |
+| new-api    | `http://<宿主IP>:18080` |
+| PostgreSQL | `127.0.0.1:5434`        |
+| Redis      | `127.0.0.1:6379`        |
+
+```bash
+cd /root/edge/hub
+
+# ① 启动
+docker compose up -d
+
+# ② 检查：三容器 up，PG/Redis healthy
+docker compose ps
+
+# ③ 停止（数据卷保留）
+docker compose down
+```
+
+- 渠道池与令牌管理见 `hub/README.md`；凭据在 `hub/.env` 不入库
+
 ## 监控服务
 
 ```

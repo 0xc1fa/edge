@@ -28,9 +28,9 @@ if ! curl -sf -m 5 "$BASE_URL/models" >/dev/null; then
   exit 1
 fi
 
-# 结果目录统一写到 ../logs/ 下，前缀 benchmark-，已被 .gitignore 忽略
+# 结果目录统一写到 ../logs/ 下，前缀 bench-，已被 .gitignore 忽略
 TS=$(date +%y%m%d-%H%M%S)
-RESULT_DIR="$SCRIPT_DIR/../logs/benchmark-$TS"
+RESULT_DIR="$SCRIPT_DIR/../logs/bench-$TS"
 mkdir -p "$RESULT_DIR"
 
 PROMPT=$(awk -F'|' -v id="$CASE_ID" '$1==id{print $2}' "$CASES_FILE")

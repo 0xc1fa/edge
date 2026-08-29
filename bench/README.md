@@ -18,4 +18,8 @@ bash simple-test.sh qwen3-coder-30b 128   # 换模型对比（先切 profile）
 
 改条件（模型 / max_tokens / 引擎 / GPU 负载）后重跑同一脚本，对比汇总即可。
 
-完整结论见 `docs/page-benchmark.md`。
+完整结论见 `docs/page-260823.md`。
+
+## 并发压测
+
+`concurrent-test.sh` 用于并发场景，结果目录统一写到 `../logs/bench-<时间戳>/`（已被 `.gitignore` 忽略）。

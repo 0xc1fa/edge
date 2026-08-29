@@ -1,0 +1,115 @@
+# =============================================================================
+# Hub — AI 资源枢纽（new-api 网关 + PostgreSQL + Redis）
+# =============================================================================
+# 定位: 接入与管控层, 横切所有推理后端与外部 API 资源
+#   - 资源池化: 本地 vLLM / 免费额度(NVIDIA 等) / 付费 API 统一收归为「渠道」
+#   - 统一入口: 对外仅暴露 OpenAI 兼容端点, 真实上游 Key 不出网关
+#   - 密钥分发: 用户自助申请令牌, 可按模型白名单/额度/过期/IP 限制
+#   - 审计: 请求日志与额度消耗, 按令牌/用户/模型维度可查
+#
+# 为何独立成目录(而非并入 infer/vllm):
+#   1. 生命周期隔离: vLLM 切模型是高频 down/up, 同 compose project 会误伤网关
+#   2. 语义归属: 网关下游含外部 API 资源, 不属「推理层」, 与 obs/(监控横切)同级
+#   3. 有状态资产: 用户/令牌/额度存独立数据卷, dind 重建不受影响
+#
+# 为何全 host 网络:
+#   1. 环境约定: 容器网桥出网受限(见 stacks/docker-compose.yml 注释),
+#      host 模式可经宿主代理访问外部付费 API
+#   2. 零配置直连本地 vLLM 127.0.0.1:18000
+#
+# 端口分配(已核对宿主占用, 5432/5433 被 stacks/port-forward 占用):
+#   18080 → new-api 控制台 + OpenAI 兼容端点
+#   5434  → PostgreSQL
+#   6379  → Redis
+#
+# 用法:
+#   启动: docker compose up -d
+#   状态: docker compose ps
+#   日志: docker compose logs -f new-api
+#   停止: docker compose down   (数据卷保留)
+#   初始化: 浏览器打开 http://<宿主IP>:18080, 首次引导设置管理员账号
+#
+# 镜像版本（全部固定, 不用 latest）:
+#   new-api  v1.0.0-rc.25   —— 见 README「版本策略」, 升级前必读
+#   postgres 16.15-alpine   —— 与 dind 内 demo-db 现役版本对齐(实测 16.15)
+#   redis    7.4-alpine     —— 与 dind 内 pmp-redis 同大版本
+# 注: 宿主无 PG/Redis 镜像(dind 内才有), 首次需拉取; 版本与 dind 对齐便于排查与离线导入。
+#
+# 镜像拉取走国内源(若官方源不稳), 方式同 docs/note-vllm.md:
+#   docker pull swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/calciumion/new-api:v1.0.0-rc.25
+#   docker tag  swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/calciumion/new-api:v1.0.0-rc.25 calciumion/new-api:v1.0.0-rc.25
+# =============================================================================
+
+services:
+  # ---------- PostgreSQL（存用户/渠道/令牌/额度/日志）----------
+  postgres:
+    image: postgres:16.15-alpine
+    container_name: hub-postgres
+    restart: unless-stopped
+    network_mode: host
+    # host 网络下容器端口即宿主端口: 5432/5433 已被 port-forward 占用, 故改用 5434
+    command: postgres -p 5434
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TZ: ${TZ}
+    volumes:
+      - hub_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -p 5434" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ---------- Redis（令牌缓存 / 限流计数 / 额度计数）----------
+  redis:
+    image: redis:7.4-alpine
+    container_name: hub-redis
+    restart: unless-stopped
+    network_mode: host
+    command: redis-server --port 6379 --appendonly yes
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - hub_redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-p", "6379", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ---------- new-api 网关 ----------
+  new-api:
+    image: calciumion/new-api:v1.0.0-rc.25
+    container_name: hub-new-api
+    restart: unless-stopped
+    # host 网络: 出网访问外部付费 API + 直连本地 vLLM, 与 registry/registry-proxy 同模式
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PORT: ${NEWAPI_PORT} # host 网络 → 直接监听宿主 18080
+      SQL_DSN: ${SQL_DSN}
+      REDIS_CONN_STRING: ${REDIS_CONN_STRING}
+      SESSION_SECRET: ${SESSION_SECRET}
+      TZ: ${TZ}
+      # 出网代理: 宿主透明代理只对宿主进程生效, host 网络下显式指向 mihomo
+      HTTP_PROXY: "http://127.0.0.1:7890"
+      HTTPS_PROXY: "http://127.0.0.1:7890"
+      # 本地推理服务与内网必须直连, 不可走代理
+      NO_PROXY: "127.0.0.1,localhost,10.8.0.8"
+    volumes:
+      - hub_newapi_data:/data
+
+volumes:
+  hub_pg_data:
+    name: hub_pg_data
+  hub_redis_data:
+    name: hub_redis_data
+  hub_newapi_data:
+    name: hub_newapi_data

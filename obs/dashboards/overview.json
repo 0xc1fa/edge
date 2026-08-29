@@ -631,7 +631,7 @@
     {
       "type": "stat",
       "title": "vLLM 排队请求",
-      "description": "排队等待中的请求数。>0 持续说明并发打满（对应告警 vLLM请求积压），值越大排队越久。",
+      "description": "排队等待中的请求数。>0 持续说明并发槽位占满，值越大排队越久。",
       "datasource": {
         "type": "prometheus",
         "uid": "PBFA97CFB590B2093"
@@ -839,7 +839,7 @@
     {
       "type": "timeseries",
       "title": "运行中 / 排队请求数",
-      "description": "vllm_num_requests_running 当前正在推理的请求；vllm_num_requests_waiting 排队中请求。排队数持续>0 说明并发打满，对应告警 vLLM请求积压。",
+      "description": "vllm_num_requests_running 当前正在推理的请求；vllm_num_requests_waiting 排队中请求。排队数持续>0 说明并发槽位占满，可能排队等待。",
       "datasource": {
         "type": "prometheus",
         "uid": "PBFA97CFB590B2093"

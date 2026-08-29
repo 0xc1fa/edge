@@ -57,14 +57,14 @@ Grafana 默认账号密码也直接来自 `.env`。
 **GPU（obs-gpu-alerts 组）**：
 
 - GPU 温度 > 88℃（warning，10m）/< 92℃（critical，5m）——90% 常态占用下温度高不是故障，阈值定在降频线
-- GPU 可用显存 < 1GB（critical，5m）——显存占用率高是常态，只有"耗尽"才告警
+- GPU 显存告警已删除：vLLM(0.90, TP2) 常驻预占 ~22.4GB/卡 + 挖矿 ~1.4GB/卡，free 常态 ~290MiB，绝对水位必然误报；容量由 vLLM KV cache 监控
 
 **vLLM（obs-vllm-alerts 组）**：
 
 - 引擎休眠（`weights_offloaded` / `discard_all`，critical，2m）
-- 请求积压：`vllm_num_requests_waiting > 20`（5m）
 - 请求错误：`increase(vllm_request_success_total{finished_reason="error"}[5m]) > 0`（1m）
 - KV cache 紧张：`vllm_kv_cache_usage_perc > 95`（10m）
+- 原"收到请求通知/请求积压"告警已删除：前者是使用记录非故障告警，后者排队前兆由 KV cache 紧张承接（`vllm_num_requests_running/waiting` 排队水位仍可在 Grafana 看板观察）
 
 ## Grafana 面板
 

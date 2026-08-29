@@ -21,8 +21,8 @@ models/*
 !models/*/
 models/*/*.safetensors
 
-# ---- 评测结果（benchmark 脚本输出到 logs/benchmark-*）----
-logs/benchmark-*/
+# ---- 评测结果（bench 脚本输出到 logs/bench-*）----
+logs/bench-*/
 
 # ---- 凭据（项目级 git 凭据文件, 含 token, 禁止上传）----
 .git-credentials
@@ -31,3 +31,6 @@ logs/benchmark-*/
 # 监控编排与规则文件（docker-compose.yml、prometheus.yml 等）正常纳入版本库
 obs/.env
 obs/dingtalk.yml
+
+# ---- 资源枢纽 hub：数据库密码与会话密钥 ----
+hub/.env
