@@ -48,7 +48,11 @@ Grafana 默认账号密码也直接来自 `.env`。
 - `node-exporter:9100`
 - `cadvisor:8080`
 - `dcgm-exporter:9400`
-- `vllm`：`172.18.0.1:18000`（docker 网关 IP，vLLM 端口已映射宿主机；指标名经 `metric_relabel_configs` 将 `vllm:` 冒号前缀改写为 `vllm_`）
+- `vllm`：`172.21.0.2:8000`（vLLM 容器网络内地址，固定 IP）
+
+  > 不能走宿主 `18000`：该端口只绑 `127.0.0.1`（强制流量经 new-api 网关鉴权），Prometheus 在容器内访问会 connection refused。
+  > 因此 Prometheus 同时接入 `vllm_default` 网络（外部网络，由 `/root/edge/infer/vllm` 项目创建），直连容器 8000；vLLM 侧已固定 IP `172.21.0.2`，避免重建后漂移。
+  > 指标名经 `metric_relabel_configs` 将 `vllm:` 冒号前缀改写为 `vllm_`
 
 ## 告警范围
 

@@ -34,15 +34,17 @@ scrape_configs:
     static_configs:
       - targets: ["dcgm-exporter:9400"]
 
-  # vLLM 推理服务指标（容器 vllm-qwen36，宿主映射 18000->8000）。
-  # 地址用 docker 网关 172.18.0.1（Prometheus 所在 obs_default 网络的宿主侧网关），
-  # 不依赖 wireguard/TUN（10.8.0.8）等外部链路，网络稳定；
-  # 如需改成 host.docker.internal 域名形式，需先给 prometheus 加 extra_hosts 并重建容器。
+  # vLLM 推理服务指标（容器 vllm-qwen36，容器内 8000）。
+  # 注意：宿主 18000 只绑定 127.0.0.1（强制流量走 new-api 网关鉴权），
+  # 因此 Prometheus 无法通过宿主端口 18000 抓取（connection refused）→ 曾触发"监控目标不可达"。
+  # 现改为容器网络内直连：prometheus 已接入 vllm_default 网络，用容器 IP 访问 8000，
+  # 不暴露任何宿主端口，也不依赖 wireguard/TUN 等外部链路。
+  # （docker 内嵌 DNS 在本机解析容器名失败，故用 IP；IP 由 vllm_default 网络分配）
   - job_name: vllm
     scrape_interval: 15s
     metrics_path: /metrics
     static_configs:
-      - targets: ["172.18.0.1:18000"]
+      - targets: ["172.21.0.2:8000"]
     metric_relabel_configs:
       # vLLM 指标名带冒号前缀（vllm:xxx），Prometheus 虽然支持冒号，
       # 但部分下游（Grafana/文本查询）兼容性差，统一改成 vllm_xxx。

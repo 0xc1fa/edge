@@ -18,6 +18,11 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
       - prometheus_data:/prometheus
+    networks:
+      # 接入 vLLM 所在网络，抓取其容器网络内的 /metrics（宿主 18000 只绑 127.0.0.1，抓不到）。
+      # vllm_default 由 /root/edge/infer/vllm 项目创建，这里按外部网络引用。
+      - default
+      - vllm_default
 
   grafana:
     # Grafana 负责展示 Prometheus 指标和后续 dashboard。
@@ -113,6 +118,13 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+
+networks:
+  default: null # 本栈默认网络 obs_default，显式引用以便同时挂第二个网络
+  # vLLM 推理栈（/root/edge/infer/vllm）的默认网络，用于容器网络内直连抓取 vLLM /metrics。
+  # 若 vLLM 全部 profile 已 down 导致该网络被删除，需先启 vLLM 再启本栈（否则报网络不存在）。
+  vllm_default:
+    external: true
 
 volumes:
   # 复用原 monitoring 项目的数据卷，保证历史指标与 Grafana 配置不丢失。

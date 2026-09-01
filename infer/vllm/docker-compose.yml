@@ -41,6 +41,12 @@ x-vllm-common: &vllm-common
   volumes:
     - /root/edge/models:/models:ro # 模型统一目录,只读挂载
     - vllm_cache:/root/.cache/vllm # torch.compile 缓存持久化(命名卷): 容器重建后缓存存活,不重编译
+  networks:
+    # 固定容器 IP: Prometheus(已接入 vllm_default) 用 172.21.0.2:8000 抓 /metrics。
+    # 宿主 18000 只绑 127.0.0.1(强制走 new-api 网关鉴权),Prometheus 经宿主端口抓不到,
+    # 故走容器网络内直连;IP 必须固定,否则容器重建后 IP 变化会导致"监控目标不可达"复发。
+    default:
+      ipv4_address: 172.21.0.2
   dns:
     - 114.114.114.114
     - 223.5.5.5
@@ -189,6 +195,15 @@ services:
     volumes:
       - openwebui_data:/app/backend/data
       - webui_hf_cache:/app/backend/data/cache/huggingface
+
+networks:
+  # 固定子网,配合服务内 ipv4_address 固定 vLLM 容器 IP(监控抓取依赖此 IP)。
+  # 名称显式写成 vllm_default,与 compose 默认网络名一致,避免重建时另建网络。
+  default:
+    name: vllm_default
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
 
 volumes:
   openwebui_data:
