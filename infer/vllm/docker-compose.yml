@@ -31,7 +31,10 @@ x-vllm-common: &vllm-common
   restart: unless-stopped
   shm_size: 2g # v0.27.1+ MTP/多进程 shm_broadcast 需共享内存,默认 64MiB 不够 → Insufficient space in /dev/shm
   ports:
-    - "18000:8000" # 宿主机18000 → 容器8000 (vLLM API)
+    # 仅绑定回环地址: 外部无法直连 18000, 强制所有流量经 new-api(hub) 网关做认证与审计。
+    # 不要改成 0.0.0.0, 否则任何人可绕过网关免鉴权调用模型。
+    # 注意: new-api 渠道 Base URL 与 Open WebUI 须用 127.0.0.1:18000 (两者均为 host 网络)。
+    - "127.0.0.1:18000:8000" # 宿主127.0.0.1:18000 → 容器8000 (vLLM API)
   environment:
     HF_XET_HIGH_PERFORMANCE: "1" # 启用 Xet 高速传输(如启动时需联网拉取)
     HF_HOME: "/models/.cache/huggingface" # HF 缓存放模型卷内
