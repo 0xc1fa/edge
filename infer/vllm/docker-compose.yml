@@ -176,11 +176,11 @@ services:
     image: ghcr.io/open-webui/open-webui:v0.10.2
     container_name: vllm-webui
     restart: unless-stopped
-    network_mode: host # host网络,直接占用宿主8080
+    network_mode: host # host网络
     # 不加 depends_on: 无 profile 的 service 不能依赖有 profile 的 service,
     # 且两个模型共用 18000 端口,WebUI 通过 API 地址连接,与 service 名字无关。
     environment:
-      PORT: "8080" # 不同时运行,沿用8080
+      PORT: "8081" # 8080 让给 Caddy 网关(公网2029→8080),WebUI 改 8081 直连/网关 /webui 转发
       # vLLM 是 OpenAI 协议,必须用 OpenAI 兼容连接。注意:新版 Open WebUI
       # 用【复数】变量 OPENAI_API_BASE_URLS/OPENAI_API_KEYS,单数变量不生效。
       # 不能用 OLLAMA_BASE_URL 指向 vLLM,否则会走 Ollama 协议(/api/tags)导致模型列表为空。

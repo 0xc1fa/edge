@@ -1,0 +1,35 @@
+# Caddy 统一入口网关
+#
+# 定位：公网唯一入口（:80），按路径分发到各内部 Web 服务
+# 架构：公网 80 ──(管理员 NAT)──▶ 本机 :80（Caddy）──▶ 127.0.0.1:<各服务端口>
+#
+# 为什么 host 网络：
+#   mihomo TUN 策略路由(ip rule 5270 lookup 52)会劫持 docker 网桥 DNAT 后流量
+#   （目标 172.x 容器 IP → 物理网卡黑洞），与 registry/registry-proxy 同理，
+#   改 host 网络后直连 local 递送，规避劫持；且 Caddy 转发目标全是宿主 127.0.0.1
+#
+# 为什么不用 systemd 装宿主机：本仓库统一 docker compose 管理，便于 git 追踪与迁移
+#
+# 使用：
+#   启动: docker compose up -d
+#   改配置（Caddyfile 变更自动生效，无需重启）: 无需操作
+#   完全重载: docker compose restart
+#   停止: docker compose down
+
+services:
+  caddy:
+    container_name: caddy-gateway
+    image: caddy:2.9
+    restart: unless-stopped
+    network_mode: host          # 直接监听宿主 80，规避 TUN 劫持
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./www:/srv/www:ro       # 服务导航首页
+      - caddy_data:/data        # 自动 HTTPS 证书存储（将来有域名时用）
+      - caddy_config:/config
+    environment:
+      - TZ=Asia/Shanghai
+
+volumes:
+  caddy_data:
+  caddy_config:

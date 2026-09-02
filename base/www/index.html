@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>边缘算力平台 · Edge Platform</title>
+  <style>
+    :root {
+      --bg: #f3f5f9;
+      --card: #ffffff;
+      --text: #101828;
+      --muted: #667085;
+      --line: #e4e7ec;
+      --accent: #2563eb;
+      --ok: #12b76a;
+      --intra: #f79009;
+      --r: 14px;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      background:
+        radial-gradient(900px 400px at 85% -80px, rgba(37, 99, 235, .10), transparent 60%),
+        radial-gradient(700px 380px at 5% 0, rgba(18, 183, 106, .08), transparent 60%),
+        var(--bg);
+      color: var(--text);
+      padding: 34px 20px 56px;
+    }
+
+    .container {
+      max-width: 1140px;
+      margin: 0 auto;
+    }
+
+    /* ========== 头部 ========== */
+    header {
+      text-align: center;
+      margin-bottom: 26px;
+    }
+
+    header h1 {
+      font-size: 30px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      background: linear-gradient(120deg, #1d4ed8, #7c3aed);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    header .slogan {
+      margin-top: 8px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    header .slogan b {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* ========== 角色块：人物徽章 + 虚线链接到对应区块 ========== */
+    .role-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 20px 8px 10px;
+      border-radius: 999px;
+      background: #fff;
+      border: 1px solid var(--line);
+      box-shadow: 0 2px 8px rgba(16, 24, 40, .06);
+      text-decoration: none;
+      color: var(--text);
+      transition: border-color .15s, box-shadow .15s;
+    }
+
+    .role-badge:hover {
+      border-color: #a5b4fc;
+      box-shadow: 0 6px 18px rgba(16, 24, 40, .12);
+    }
+
+    .role-badge .role-ico {
+      flex-shrink: 0;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      box-shadow: 0 4px 10px rgba(16, 24, 40, .15);
+    }
+
+    .role-badge.dev .role-ico {
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    }
+
+    .role-badge.ops .role-ico {
+      background: linear-gradient(135deg, #059669, #047857);
+    }
+
+    .role-badge .role-ico svg {
+      width: 24px;
+      height: 24px;
+    }
+
+    .rb-txt {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .rb-corresp {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    .rb-corresp i {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .role-badge.ops .rb-corresp i {
+      background: var(--ok);
+    }
+
+    .rb-title {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    /* ========== 应用层（平台外 · 业务应用） ========== */
+    .app-layer {
+      background: var(--card);
+      border: 1.5px dashed #94a3b8;
+      border-radius: 18px;
+      padding: 16px 18px;
+      margin-bottom: 8px;
+    }
+
+    .app-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+
+    .app-head small {
+      color: var(--muted);
+      font-weight: 400;
+      font-size: 12px;
+    }
+
+    .app-body {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    /* 横向虚线连接（角色 → 内容） */
+    .conn-h {
+      flex: 1;
+      min-width: 36px;
+      height: 2px;
+      border-top: 2px dashed #cbd5e1;
+    }
+
+    /* ========== 业务应用流程图 ========== */
+    .flow {
+      flex: 1.5;
+      min-width: 0;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 14px;
+      box-shadow: 0 1px 3px rgba(16, 24, 40, .05);
+    }
+
+    .flow-head {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12.5px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .flow-head::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      flex-shrink: 0;
+    }
+
+    .flow-steps {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 10px;
+    }
+
+    .flow-node {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 9px;
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      font-size: 12px;
+      font-weight: 600;
+      color: #344054;
+    }
+
+    .flow-node b {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      color: #fff;
+      font-size: 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .flow-arr {
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .flow-note {
+      margin-top: 10px;
+      padding-top: 9px;
+      border-top: 1px dashed var(--line);
+      font-size: 11.5px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .flow-note b {
+      color: var(--text);
+    }
+
+    /* ========== 应用层 → 平台 连接 ========== */
+    .layer-gap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 30px;
+      margin: 2px 0 4px;
+    }
+
+    .layer-gap .lg-line {
+      width: 2px;
+      flex: 1;
+      border-left: 2px dashed #cbd5e1;
+    }
+
+    .layer-gap .lg-tag {
+      font-size: 10px;
+      line-height: 1;
+      color: #667085;
+      font-weight: 600;
+      padding: 3px 0;
+    }
+
+    /* ========== 平台内：左角色 + 右内容（参考应用层布局） ========== */
+    .plat-row {
+      display: flex;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+
+
+    .plat-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* ========== 通用卡片 ========== */
+    .card {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 15px 16px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      text-decoration: none;
+      color: var(--text);
+      box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+      transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+    }
+
+    a.card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 24px rgba(16, 24, 40, .10);
+      border-color: #c7d2fe;
+    }
+
+    .card-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* 品牌色字母图标 */
+    .logo {
+      flex-shrink: 0;
+      width: 40px;
+      height: 40px;
+      border-radius: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      box-shadow: inset 0 -2px 4px rgba(0, 0, 0, .12), 0 4px 10px rgba(16, 24, 40, .14);
+    }
+
+    .logo svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .card .name {
+      font-size: 14px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .card .desc {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .card-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: auto;
+    }
+
+    .route {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: #ecfdf3;
+      color: #067647;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border: 1px solid #d1fadf;
+    }
+
+    .route.intra {
+      background: #fffaeb;
+      color: #b54708;
+      border-color: #fedf89;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 10px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      background: #f2f4f7;
+      color: #475467;
+      vertical-align: middle;
+      white-space: nowrap;
+      font-weight: 600;
+    }
+
+    .badge.intra {
+      background: #fffaeb;
+      color: #b54708;
+    }
+
+    /* 推理服务 · 本地模型清单 */
+    .model-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 2px;
+    }
+
+    .model-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #344054;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
+    .model-line::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #a78bfa, #6d28d9);
+      flex-shrink: 0;
+    }
+
+    .model-line small {
+      color: var(--muted);
+      font-weight: 400;
+      font-size: 11px;
+    }
+
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--ok);
+      flex-shrink: 0;
+      vertical-align: middle;
+    }
+
+    .dot.intra {
+      background: var(--intra);
+    }
+
+    /* ========== 平台边界 ========== */
+    .platform {
+      border: 2px dashed #93c5fd;
+      border-radius: 20px;
+      background:
+        linear-gradient(180deg, rgba(239, 246, 255, .6), rgba(248, 250, 252, .4)),
+        #fff;
+      padding: 20px 18px 22px;
+      position: relative;
+    }
+
+    .platform-tag {
+      position: absolute;
+      top: -13px;
+      left: 20px;
+      background: linear-gradient(120deg, #2563eb, #7c3aed);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 3px 14px;
+      border-radius: 999px;
+      letter-spacing: 1px;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, .3);
+    }
+
+    /* 分层卡片：左侧色带 */
+    .layer {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      padding: 14px 16px;
+      position: relative;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+    }
+
+    .layer::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      border-radius: var(--r) 0 0 var(--r);
+    }
+
+    .layer.soft::before {
+      background: linear-gradient(#2563eb, #7c3aed);
+    }
+
+    .layer.hw::before {
+      background: linear-gradient(#475467, #98a2b3);
+    }
+
+    .layer.big {
+      padding: 16px 18px 18px;
+    }
+
+    .layer-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      padding-left: 8px;
+    }
+
+    .layer-head .dot-accent {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .layer.soft .dot-accent {
+      background: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .15);
+    }
+
+    .layer.hw .dot-accent {
+      background: #475467;
+      box-shadow: 0 0 0 3px rgba(71, 84, 103, .15);
+    }
+
+    .layer-head small {
+      color: var(--muted);
+      font-weight: 400;
+      font-size: 11.5px;
+      margin-left: 2px;
+    }
+
+    .sec {
+      background: #fbfcfe;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 14px 14px;
+    }
+
+    .sec-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12.5px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .sec-title small {
+      color: var(--muted);
+      font-weight: 400;
+      font-size: 11px;
+      margin-left: 2px;
+    }
+
+    .sec-tag {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10px;
+      font-weight: 800;
+      color: #fff;
+      padding: 2px 9px;
+      border-radius: 999px;
+      letter-spacing: .5px;
+    }
+
+    .sec-tag.base { background: #2563eb; }
+    .sec-tag.stacks { background: #dc2626; }
+    .sec-tag.hub { background: #d97706; }
+    .sec-tag.infer { background: #7c3aed; }
+    .sec-tag.obs { background: #0891b2; }
+
+    .sec-cards {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .sec-cards > * {
+      flex: 1 1 150px;
+      min-width: 0;
+    }
+
+    /* 应用栈 · 三张卡等高 */
+    .stacks-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .stacks-grid > * {
+      height: 100%;
+      min-width: 0;
+    }
+
+    /* 三卡等高后 desc 均分剩余空间，内部结构对齐 */
+    .stacks-grid .desc {
+      flex: 1;
+      display: flex;
+      align-items: center;
+    }
+
+    /* 单服务的横条卡（base 区） */
+    .sec-card-wide {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: #fff;
+      border: 1px solid var(--line);
+      text-decoration: none;
+      color: inherit;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+      transition: border-color .15s, box-shadow .15s;
+    }
+
+    .sec-card-wide:hover {
+      border-color: #a5b4fc;
+      box-shadow: 0 4px 12px rgba(16, 24, 40, .08);
+    }
+
+    .sec-card-wide .logo {
+      flex-shrink: 0;
+    }
+
+    .w-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .w-name {
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .w-desc {
+      font-size: 11.5px;
+      color: var(--muted);
+      margin-top: 2px;
+      line-height: 1.5;
+    }
+
+    /* ========== 软件层主体 ========== */
+    /* 1 应用栈：全宽横向条 */
+    .soft-top {
+      margin-top: 12px;
+    }
+
+    /* 2/3 层 + 右侧可观测性纵柱 */
+    .soft-mid {
+      display: flex;
+      gap: 12px;
+      align-items: stretch;
+      margin-top: 12px;
+    }
+
+    .soft-mid-main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .sec .card + .card {
+      margin-top: 10px;
+    }
+
+    /* 推理服务 · 两个子卡片并排 */
+    .infer-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .infer-grid .card + .card {
+      margin-top: 0;
+    }
+
+    .sec-wide-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+
+    /* 4 基础服务：全宽横向条 */
+    .soft-bot {
+      margin-top: 12px;
+    }
+
+    /* ========== 可观测性 · 右侧纵柱（位于资源枢纽 / 推理服务层右侧） ========== */
+    .obs-col {
+      flex-shrink: 0;
+      width: 252px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background:
+        linear-gradient(180deg, rgba(8, 145, 178, .07), rgba(8, 145, 178, .02)),
+        #fbfcfe;
+      border: 1.5px solid #a5f3fc;
+      border-radius: 12px;
+      padding: 12px 12px 14px;
+    }
+
+    .obs-col-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12.5px;
+      font-weight: 700;
+    }
+
+    .obs-col-head small {
+      color: var(--muted);
+      font-weight: 400;
+      font-size: 11px;
+      margin-left: 2px;
+    }
+
+    .obs-col-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 1;
+    }
+
+    .obs-col-body .obs-node {
+      flex: 1;
+    }
+
+    .obs-node {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: center;
+      gap: 4px;
+      font-size: 12px;
+      padding: 9px 10px;
+      border-radius: 9px;
+      background: #fff;
+      border: 1px solid var(--line);
+      box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+      flex: 1;
+      min-height: 0;
+    }
+
+    .obs-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .obs-node a {
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .obs-node a:hover {
+      color: #7c3aed;
+    }
+
+    .obs-node a svg {
+      width: 13px;
+      height: 13px;
+      margin-left: 3px;
+      vertical-align: -2px;
+      transition: transform .15s ease;
+    }
+
+    .obs-node a:hover svg {
+      transform: translate(1px, -1px);
+    }
+
+    .obs-node .obs-role {
+      font-size: 10px;
+      color: var(--muted);
+      white-space: nowrap;
+      font-weight: 600;
+      padding-left: 30px;
+    }
+
+    /* ========== 图例 / 页脚 ========== */
+    .legend {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 18px;
+      flex-wrap: wrap;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    footer {
+      text-align: center;
+      color: #98a2b3;
+      font-size: 12px;
+      margin-top: 26px;
+    }
+
+    @media (max-width: 900px) {
+      .app-body {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .app-body .conn-h {
+        width: 2px;
+        height: 18px;
+        border-top: none;
+        border-left: 2px dashed #cbd5e1;
+        margin-left: 22px;
+        flex: none;
+      }
+
+      .flow {
+        width: 100%;
+        flex: none;
+      }
+
+      .plat-row {
+        flex-direction: column;
+      }
+
+      .soft-mid {
+        flex-direction: column;
+      }
+
+      .obs-col {
+        width: 100%;
+      }
+
+      .obs-col-body {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .sec-wide-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 600px) {
+      .obs-col-body {
+        grid-template-columns: 1fr;
+      }
+
+      .infer-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .stacks-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .sec-wide-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>Agent Home</h1>
+      <p class="slogan">边缘算力平台 · 提供现成的<b>模型能力</b>与<b>基础服务</b>，让业务应用自助构建、快速上线</p>
+    </header>
+
+    <!-- ========== 应用层（平台外 · 业务应用） ========== -->
+    <div class="app-layer">
+      <div class="app-head"><span class="dot-accent"></span>应用层</div>
+      <div class="app-body">
+        <!-- 角色1：开发者 / 业务方 -->
+        <a class="role-badge dev" href="/gitea">
+          <span class="role-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="8" r="4"></circle>
+              <path d="M5 20c0-3.3 3.1-5.5 7-5.5s7 2.2 7 5.5"></path>
+            </svg>
+          </span>
+          <span class="rb-txt">
+            <span class="rb-corresp"><i></i>平台外 · 业务应用</span>
+            <span class="rb-title">开发者 / 业务方</span>
+          </span>
+        </a>
+        <div class="conn-h"></div>
+        <!-- 业务应用流程 -->
+        <div class="flow">
+          <div class="flow-head">业务应用由开发方自行管理</div>
+          <div class="flow-steps">
+            <div class="flow-node"><b>1</b>代码存入平台仓库</div>
+            <div class="flow-arr">→</div>
+            <div class="flow-node"><b>2</b>自动构建成镜像</div>
+            <div class="flow-arr">→</div>
+            <div class="flow-node"><b>3</b>一键部署上线</div>
+          </div>
+          <div class="flow-note">应用运行在<b>平台之上</b>，与平台能力相互独立</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 应用层 → 平台 连接 -->
+    <div class="layer-gap">
+      <div class="lg-line"></div>
+      <div class="lg-tag">▼</div>
+      <div class="lg-line"></div>
+    </div>
+
+    <!-- ========== 平台范围 ========== -->
+    <div class="platform">
+      <div class="platform-tag">边缘平台 · 平台范围</div>
+
+      <!-- ========== 平台内部：左角色 + 右内容（参考应用层布局） ========== -->
+      <div class="plat-row">
+        <div class="plat-content">
+
+        <!-- 软件层 -->
+          <div class="layer soft big">
+            <div class="layer-head"><span class="dot-accent"></span>软件层</div>
+            <!-- 1 应用栈 · 横向全宽 -->
+            <section class="sec soft-top">
+              <div class="sec-title"><span class="sec-tag stacks">stacks</span>应用栈 <small>开发上线工具</small></div>
+              <div class="stacks-grid">
+                <a class="card" href="/gitea">
+                  <div class="card-top">
+                    <div class="logo" style="background:linear-gradient(135deg,#f87171,#dc2626)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6l-5 6 5 6M16 6l5 6-5 6M13 3l-2 18"/></svg></div>
+                    <div class="name">代码仓库</div>
+                  </div>
+                  <div class="desc">存放业务应用代码，支持版本管理</div>
+                  <div class="card-foot">
+                    <span class="route">/gitea</span>
+                    <span class="dot"></span>
+                  </div>
+                </a>
+                <a class="card" href="/registry">
+                  <div class="card-top">
+                    <div class="logo" style="background:linear-gradient(135deg,#38bdf8,#0284c7)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></div>
+                    <div class="name">镜像仓库</div>
+                  </div>
+                  <div class="desc">存放应用镜像 · 公共镜像加速拉取</div>
+                  <div class="card-foot">
+                    <span class="route">/registry</span>
+                    <span class="dot"></span>
+                  </div>
+                </a>
+                <a class="card" href="https://10.8.0.8:9443" target="_blank" rel="noopener">
+                  <div class="card-top">
+                    <div class="logo" style="background:linear-gradient(135deg,#818cf8,#4f46e5)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="8" rx="2"/><rect x="3" y="13" width="18" height="8" rx="2"/><path d="M3 11v2M21 11v2"/></svg></div>
+                    <div class="name">容器管理后台<span class="badge intra">仅内网</span></div>
+                  </div>
+                  <div class="desc">可视化部署与管理应用容器</div>
+                  <div class="card-foot">
+                    <span class="route intra">10.8.0.8:9443</span>
+                    <span class="dot intra"></span>
+                  </div>
+                </a>
+              </div>
+            </section>
+
+            <!-- 2/3 层 + 右侧可观测性纵柱 -->
+            <div class="soft-mid">
+              <div class="soft-mid-main">
+            <!-- 资源枢纽 -->
+            <section class="sec">
+              <div class="sec-title"><span class="sec-tag hub">hub</span>资源枢纽 <small>统一管理调度</small></div>
+              <a class="sec-card-wide" href="http://10.8.0.8:18080" target="_blank" rel="noopener">
+                <div class="logo" style="background:linear-gradient(135deg,#818cf8,#4338ca)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg></div>
+                <div class="w-body">
+                  <div class="w-name">接口管理后台 <span class="badge">统一调度</span></div>
+                  <div class="w-desc">统一管理调度：本地推理服务 · 外部模型账号池</div>
+                </div>
+              </a>
+            </section>
+
+            <!-- 推理服务 -->
+            <section class="sec">
+              <div class="sec-title"><span class="sec-tag infer">infer</span>推理服务 <small>本地模型 · 开箱即用</small></div>
+              <div class="infer-grid">
+                <div class="card">
+                  <div class="card-top">
+                    <div class="logo" style="background:linear-gradient(135deg,#f472b6,#be185d)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></div>
+                    <div class="name">本地模型</div>
+                  </div>
+                  <div class="model-list">
+                    <div class="model-line">Qwen3-Coder-30B<small>MoE · 代码</small></div>
+                    <div class="model-line">Qwen3.8-27B<small>多模态</small></div>
+                    <div class="model-line">Qwen3.6-35B<small>MoE · 多模态</small></div>
+                  </div>
+                </div>
+                <a class="card" href="http://10.8.0.8:8081" target="_blank" rel="noopener">
+                  <div class="card-top">
+                    <div class="logo" style="background:linear-gradient(135deg,#22c55e,#15803d)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.5 8.5 0 1 1 16.1-3.8z"/></svg></div>
+                    <div class="name">网页对话助手<span class="badge intra">仅内网</span></div>
+                  </div>
+                  <div class="desc">打开即用的聊天界面，直接与 AI 对话</div>
+                  <div class="card-foot">
+                    <span class="route intra">10.8.0.8:8081</span>
+                    <span class="dot intra"></span>
+                  </div>
+                </a>
+              </div>
+            </section>
+              </div><!-- /soft-mid-main -->
+
+              <!-- 可观测性 · 右侧纵柱（位于资源枢纽 / 推理服务层右侧） -->
+              <aside class="obs-col">
+                <div class="obs-col-head"><span class="sec-tag obs">obs</span>可观测性 <small>统一监控</small></div>
+                <div class="obs-col-body">
+                  <div class="obs-node">
+                    <div class="obs-line">
+                      <span class="mini" style="background:linear-gradient(135deg,#f59e0b,#b45309);width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg></span>
+                      <a href="/grafana">监控看板<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg></a>
+                    </div>
+                    <span class="obs-role">集中展示</span>
+                  </div>
+                  <div class="obs-node">
+                    <div class="obs-line">
+                      <span class="mini" style="background:linear-gradient(135deg,#f87171,#dc2626);width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
+                      <b>告警中心</b>
+                    </div>
+                    <span class="obs-role">推送钉钉</span>
+                  </div>
+                  <div class="obs-node">
+                    <div class="obs-line">
+                      <span class="mini" style="background:linear-gradient(135deg,#f97316,#c2410c);width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></span>
+                      <a href="/prom">指标存储</a>
+                    </div>
+                    <span class="obs-role">集中存储</span>
+                  </div>
+                  <div class="obs-node">
+                    <div class="obs-line">
+                      <span class="mini" style="background:linear-gradient(135deg,#94a3b8,#475569);width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M22 12h-4l-3 8-6-16-3 8H2"/></svg></span>
+                      <b>节点 / 容器 / 显卡 采集</b>
+                    </div>
+                    <span class="obs-role">数据采集</span>
+                  </div>
+                </div>
+              </aside>
+            </div><!-- /soft-mid -->
+
+            <!-- 4 基础服务 · 横向全宽 -->
+            <section class="sec soft-bot">
+              <div class="sec-title"><span class="sec-tag base">base</span>基础服务 <small>平台公共能力</small></div>
+            <div class="sec-wide-grid">
+              <div class="sec-card-wide">
+                <div class="logo" style="background:linear-gradient(135deg,#34d399,#047857)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="5" r="2.5"/><circle cx="19" cy="5" r="2.5"/><circle cx="12" cy="19" r="2.5"/><path d="M5 7.5V15a3 3 0 0 0 3 3h4M19 7.5V12h-7v4.5"/></svg></div>
+                <div class="w-body">
+                  <div class="w-name">网关</div>
+                  <div class="w-desc">统一入口 · 按路径分流</div>
+                </div>
+              </div>
+              <div class="sec-card-wide">
+                <div class="logo" style="background:linear-gradient(135deg,#38bdf8,#0284c7)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg></div>
+                <div class="w-body">
+                  <div class="w-name">虚拟内网</div>
+                  <div class="w-desc">跨设备安全组网 · 内网直连互访</div>
+                </div>
+              </div>
+              <div class="sec-card-wide">
+                <div class="logo" style="background:linear-gradient(135deg,#fbbf24,#d97706)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></div>
+                <div class="w-body">
+                  <div class="w-name">网络代理</div>
+                  <div class="w-desc">统一出口代理 · 按规则智能分流</div>
+                </div>
+              </div>
+              <div class="sec-card-wide">
+                <div class="logo" style="background:linear-gradient(135deg,#f87171,#dc2626)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg></div>
+                <div class="w-body">
+                  <div class="w-name">安全</div>
+                  <div class="w-desc">密钥管理 · 访问控制 · 审计记录</div>
+                </div>
+              </div>
+            </div>
+          </section>
+      </div>
+
+          <!-- 硬件层 -->
+          <div class="layer hw big">
+            <div class="layer-head"><span class="dot-accent"></span>硬件层 <small>提供算力与网络资源</small></div>
+            <div class="sec-cards">
+              <div class="card">
+                <div class="card-top">
+                  <div class="logo" style="background:linear-gradient(135deg,#a78bfa,#6d28d9)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><path d="M9 12h6"/></svg></div>
+                  <div class="name">GPU 算力</div>
+                </div>
+                <div class="desc">2 × RTX 4090 24GB · 推理加速与模型加载</div>
+              </div>
+              <div class="card">
+                <div class="card-top">
+                  <div class="logo" style="background:linear-gradient(135deg,#34d399,#047857)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg></div>
+                  <div class="name">CPU / 内存</div>
+                </div>
+                <div class="desc">AMD EPYC 7302 · 32 线程 · 125GB 内存</div>
+              </div>
+              <div class="card">
+                <div class="card-top">
+                  <div class="logo" style="background:linear-gradient(135deg,#38bdf8,#0284c7)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></div>
+                  <div class="name">存储</div>
+                </div>
+                <div class="desc">NVMe 1.8TB · 模型权重 / 镜像 / 数据卷</div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /plat-content -->
+      </div><!-- /plat-row -->
+
+    </div><!-- /platform -->
+
+    <div class="legend">
+      <span><i class="dot"></i>经网关可访问</span>
+      <span><i class="dot intra"></i>仅内网直连</span>
+      <span>虚线框 = 分层边界 · 业务应用（应用层）在平台外</span>
+    </div>
+
+    <footer>边缘算力平台 · 新服务请更新 base/www/index.html</footer>
+  </div>
+
+</body>
+
+</html>

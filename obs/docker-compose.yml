@@ -11,6 +11,9 @@ services:
       - --storage.tsdb.path=/prometheus # 数据目录
       - --storage.tsdb.retention.time=0 # 历史数据全保留（不按时间裁剪）
       - --web.enable-lifecycle # 支持热加载
+      # 经 Caddy 网关子路径 /prom 访问，正确生成页面链接
+      - --web.external-url=http://10.8.0.8/prom
+      - --web.route-prefix=/prom
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
@@ -38,6 +41,8 @@ services:
       GF_SERVER_ROOT_URL: "${GF_SERVER_ROOT_URL:-http://localhost:3000/}"
       GF_SERVER_DOMAIN: "${GF_SERVER_DOMAIN:-localhost}"
       GF_SERVER_ENFORCE_DOMAIN: "false"
+      # 经 Caddy 子路径访问时必须开启，否则 /grafana/login 等路径不匹配导致 302 循环
+      GF_SERVER_SERVE_FROM_SUB_PATH: "${GF_SERVER_SERVE_FROM_SUB_PATH:-true}"
     volumes:
       - grafana_data:/var/lib/grafana
       # 启动时自动注入 Prometheus 数据源。

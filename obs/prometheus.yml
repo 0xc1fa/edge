@@ -15,7 +15,10 @@ alerting:
 
 scrape_configs:
   # Prometheus 自监控。
+  # 注意：启动参数 --web.route-prefix=/prom 使所有路由(含 /metrics)带 /prom 前缀，
+  # 此处必须用 /prom/metrics，否则 404 导致 up=0 触发"监控目标不可达"钉钉告警。
   - job_name: prometheus
+    metrics_path: /prom/metrics
     static_configs:
       - targets: ["prometheus:9090"]
 

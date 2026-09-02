@@ -1,0 +1,70 @@
+# Caddy 统一入口网关 —— IP + 路径分发（无域名场景）
+#
+# 访问方式: http://<公网IP>/<路径>
+# 无域名故不配 TLS（Caddy 自动 HTTPS 需域名）；将来有域名后改为
+#   :443 { tls ... } + 子域名分发，证书自动签发（数据存 caddy_data 卷）
+#
+# 加服务模板:
+#   @xxx path /xxx /xxx/*
+#   handle @xxx { reverse_proxy 127.0.0.1:<端口> }
+#
+# 注意：路径保留前缀转发（不 strip），各服务需配置子路径感知：
+#   - Gitea   [server] ROOT_URL = http://<IP>/gitea
+#   - Grafana root_url = http://<IP>/grafana ; serve_from_sub_path = true
+#   - new-api 不支持子路径的话，改独立端口映射
+
+:80, :8080 {
+	encode zstd gzip
+
+	# ---- Gitea（代码托管）----
+	# Gitea 路由挂在根路径（ROOT_URL 子路径仅用于生成链接），需剥离 /gitea 前缀转发
+	@gitea_root path /gitea
+	redir @gitea_root /gitea/ permanent
+	handle_path /gitea/* {
+		reverse_proxy 127.0.0.1:3100
+	}
+
+	# ---- Grafana（监控面板）----
+	@grafana path /grafana /grafana/*
+	handle @grafana {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	# ---- Prometheus（指标）----
+	@prom path /prom /prom/*
+	handle @prom {
+		reverse_proxy 127.0.0.1:9090
+	}
+
+	# ---- Registry UI（镜像仓库界面）----
+	# 资源为相对路径，用 handle_path 剥离 /registry 前缀，让 registry-ui 认为自己在根路径
+	@registry_root path /registry
+	redir @registry_root /registry/ permanent
+	handle_path /registry/* {
+		reverse_proxy 127.0.0.1:5100
+	}
+
+	# ---- Solar Server ----
+	@solar path /solar /solar/*
+	handle @solar {
+		reverse_proxy 127.0.0.1:5901
+	}
+
+	# ---- vLLM WebUI（推理对话界面）----
+	@webui path /webui /webui/*
+	handle @webui {
+		reverse_proxy 127.0.0.1:8081
+	}
+
+	# ---- new-api（LLM API 网关）----
+	@api path /api /api/*
+	handle @api {
+		reverse_proxy 127.0.0.1:18080
+	}
+
+	# ---- 兜底：服务导航首页（hao123 风格）----
+	handle {
+		root * /srv/www
+		file_server
+	}
+}
