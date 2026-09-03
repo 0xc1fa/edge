@@ -30,7 +30,7 @@ models/                    # 模型权重统一目录（上级目录，只读挂
 ## 架构
 
 ```
-浏览器 ──► Open WebUI (:8080)
+浏览器 ──► Open WebUI (:8081)
               │  OpenAI 协议 (/v1)
               ▼
           vLLM (:18000)              ← profiles 决定加载哪个模型

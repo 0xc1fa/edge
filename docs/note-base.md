@@ -1,4 +1,16 @@
-# 网络 代理 下载
+# 网络 代理 下载 管理
+
+## 🔑 统一服务密码 260903
+
+> 场景：自建服务多、账号密码散乱易忘 → 统一为同一强密码。三服务改密机制各异，先定密码再过策略关。
+
+- **Gitea**（`/gitea`，唯一提供官方改密 CLI 的服务）：`docker exec -it gitea gitea admin user change-password --username <账号> --password '<新密码>'`——管理员直改**不校验旧密码**，忘了也能重置；或登录后「设置 → 账号」改
+- **Portainer**（`:9443`，仅 UI）：右上角账号菜单 →「我的账户」→ 修改密码，需旧密码 + 新密码 ×2；强度校验不过即被拒。**无 CLI、忘旧密码无法直改**——兜底只能删卷重建走 secret 文件（`stacks/portainer_admin_password.txt` + `--admin-password-file`，仅首次初始化生效）
+- **Open WebUI**（`:8081`，仅 UI）：头像 → 设置 → 账号 → 修改密码，需旧密码。忘旧密码的兜底是直改库：密码存 `auth` 表 `password` 列（bcrypt 哈希，webui.db 在 `openwebui_data` 卷），生成新 bcrypt 后 UPDATE 即可
+
+应用库哈希 → secret 明文文件（Portainer 的 `.txt` 同步改成统一密码，防删卷重建后"退回旧密码"）→ 浏览器登录态（旧站点清 localStorage 后重登）。
+
+---
 
 ## 🌐 服务导航 260902
 
@@ -48,7 +60,6 @@
 - **内网与公网同规则**：Caddy 同时监听 `:80`（内网）与 `:8080`（公网 2029→8080），路由规则完全一致，避免两套维护
 
 ![ref-base-home](ref-base-home.png)
-
 
 ---
 

@@ -43,7 +43,7 @@
 
 ## 账号与授权
 
-- admin 密码 `Admin@2026pass`（`portainer_admin_password.txt`），首次启动经 `--admin-password-file` 自动初始化，绕过 UI 超时锁定
+- admin 密码 `Root@edge202608`（当前生效，260903 统一，`portainer_admin_password.txt` 已同步），首次启动经 `--admin-password-file` 自动初始化，绕过 UI 超时锁定
 - 改密接口强制 12 位 + 大小写+数字+符号（硬编码，无法关闭）
 - test 用户（Environment Admin）已授权 dind-platform 环境：可穿 GPU、管 stack；平台层不可触（Settings/用户/其他环境）
 

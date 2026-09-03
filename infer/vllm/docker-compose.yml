@@ -186,7 +186,9 @@ services:
       # 不能用 OLLAMA_BASE_URL 指向 vLLM,否则会走 Ollama 协议(/api/tags)导致模型列表为空。
       OPENAI_API_BASE_URLS: "http://127.0.0.1:18000/v1"
       OPENAI_API_KEYS: "dummy" # vLLM 不校验 key,占位即可
-      WEBUI_AUTH: "False" # 关闭登录
+      WEBUI_AUTH: "True" # 开启登录认证 (260903 由 False 改 True)
+      ENABLE_SIGNUP: "true" # 开放注册 (260903 由 false 改 true,配合 DEFAULT_USER_ROLE=pending 管理员审核)
+      DEFAULT_USER_ROLE: "pending" # 新注册用户角色为 pending,需管理员在 用户管理 中批准为 user 后才能使用
       # RAG 嵌入: 需单独提供嵌入服务(见 note.md)。此处先不依赖 Ollama
       OFFLINE_MODE: "true" # 禁止启动时从HF下载任何模型
       HTTPS_PROXY: "http://127.0.0.1:7890"

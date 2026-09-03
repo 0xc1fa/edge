@@ -574,11 +574,25 @@
       letter-spacing: .5px;
     }
 
-    .sec-tag.base { background: #2563eb; }
-    .sec-tag.stacks { background: #dc2626; }
-    .sec-tag.hub { background: #d97706; }
-    .sec-tag.infer { background: #7c3aed; }
-    .sec-tag.obs { background: #0891b2; }
+    .sec-tag.base {
+      background: #2563eb;
+    }
+
+    .sec-tag.stacks {
+      background: #dc2626;
+    }
+
+    .sec-tag.hub {
+      background: #d97706;
+    }
+
+    .sec-tag.infer {
+      background: #7c3aed;
+    }
+
+    .sec-tag.obs {
+      background: #0891b2;
+    }
 
     .sec-cards {
       display: flex;
@@ -586,7 +600,7 @@
       gap: 10px;
     }
 
-    .sec-cards > * {
+    .sec-cards>* {
       flex: 1 1 150px;
       min-width: 0;
     }
@@ -598,16 +612,13 @@
       gap: 10px;
     }
 
-    .stacks-grid > * {
-      height: 100%;
+    .stacks-grid>* {
       min-width: 0;
     }
 
     /* 三卡等高后 desc 均分剩余空间，内部结构对齐 */
     .stacks-grid .desc {
       flex: 1;
-      display: flex;
-      align-items: center;
     }
 
     /* 单服务的横条卡（base 区） */
@@ -673,7 +684,7 @@
       gap: 12px;
     }
 
-    .sec .card + .card {
+    .sec .card+.card {
       margin-top: 10px;
     }
 
@@ -684,7 +695,7 @@
       gap: 10px;
     }
 
-    .infer-grid .card + .card {
+    .infer-grid .card+.card {
       margin-top: 0;
     }
 
@@ -893,7 +904,8 @@
         <!-- 角色1：开发者 / 业务方 -->
         <a class="role-badge dev" href="/gitea">
           <span class="role-ico">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"
+              stroke-linejoin="round">
               <circle cx="12" cy="8" r="4"></circle>
               <path d="M5 20c0-3.3 3.1-5.5 7-5.5s7 2.2 7 5.5"></path>
             </svg>
@@ -910,7 +922,7 @@
           <div class="flow-steps">
             <div class="flow-node"><b>1</b>代码存入平台仓库</div>
             <div class="flow-arr">→</div>
-            <div class="flow-node"><b>2</b>自动构建成镜像</div>
+            <div class="flow-node"><b>2</b>构建镜像并推送</div>
             <div class="flow-arr">→</div>
             <div class="flow-node"><b>3</b>一键部署上线</div>
           </div>
@@ -934,7 +946,7 @@
       <div class="plat-row">
         <div class="plat-content">
 
-        <!-- 软件层 -->
+          <!-- 软件层 -->
           <div class="layer soft big">
             <div class="layer-head"><span class="dot-accent"></span>软件层</div>
             <!-- 1 应用栈 · 横向全宽 -->
@@ -943,10 +955,14 @@
               <div class="stacks-grid">
                 <a class="card" href="/gitea">
                   <div class="card-top">
-                    <div class="logo" style="background:linear-gradient(135deg,#f87171,#dc2626)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6l-5 6 5 6M16 6l5 6-5 6M13 3l-2 18"/></svg></div>
+                    <div class="logo" style="background:linear-gradient(135deg,#f87171,#dc2626)"><svg
+                        viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M8 6l-5 6 5 6M16 6l5 6-5 6M13 3l-2 18" />
+                      </svg></div>
                     <div class="name">代码仓库</div>
                   </div>
-                  <div class="desc">存放业务应用代码，支持版本管理</div>
+                  <div class="desc">存放业务代码 · 版本管理</div>
                   <div class="card-foot">
                     <span class="route">/gitea</span>
                     <span class="dot"></span>
@@ -954,7 +970,13 @@
                 </a>
                 <a class="card" href="/registry">
                   <div class="card-top">
-                    <div class="logo" style="background:linear-gradient(135deg,#38bdf8,#0284c7)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></div>
+                    <div class="logo" style="background:linear-gradient(135deg,#38bdf8,#0284c7)"><svg
+                        viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <ellipse cx="12" cy="6" rx="8" ry="3" />
+                        <path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6" />
+                        <path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
+                      </svg></div>
                     <div class="name">镜像仓库</div>
                   </div>
                   <div class="desc">存放应用镜像 · 公共镜像加速拉取</div>
@@ -965,8 +987,14 @@
                 </a>
                 <a class="card" href="https://10.8.0.8:9443" target="_blank" rel="noopener">
                   <div class="card-top">
-                    <div class="logo" style="background:linear-gradient(135deg,#818cf8,#4f46e5)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="8" rx="2"/><rect x="3" y="13" width="18" height="8" rx="2"/><path d="M3 11v2M21 11v2"/></svg></div>
-                    <div class="name">容器管理后台<span class="badge intra">仅内网</span></div>
+                    <div class="logo" style="background:linear-gradient(135deg,#818cf8,#4f46e5)"><svg
+                        viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <rect x="3" y="3" width="18" height="8" rx="2" />
+                        <rect x="3" y="13" width="18" height="8" rx="2" />
+                        <path d="M3 11v2M21 11v2" />
+                      </svg></div>
+                    <div class="name">容器管理<span class="badge intra">仅内网</span></div>
                   </div>
                   <div class="desc">可视化部署与管理应用容器</div>
                   <div class="card-foot">
@@ -980,46 +1008,62 @@
             <!-- 2/3 层 + 右侧可观测性纵柱 -->
             <div class="soft-mid">
               <div class="soft-mid-main">
-            <!-- 资源枢纽 -->
-            <section class="sec">
-              <div class="sec-title"><span class="sec-tag hub">hub</span>资源枢纽 <small>统一管理调度</small></div>
-              <a class="sec-card-wide" href="http://10.8.0.8:18080" target="_blank" rel="noopener">
-                <div class="logo" style="background:linear-gradient(135deg,#818cf8,#4338ca)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg></div>
-                <div class="w-body">
-                  <div class="w-name">接口管理后台 <span class="badge">统一调度</span></div>
-                  <div class="w-desc">统一管理调度：本地推理服务 · 外部模型账号池</div>
-                </div>
-              </a>
-            </section>
+                <!-- 资源枢纽 -->
+                <section class="sec">
+                  <div class="sec-title"><span class="sec-tag hub">hub</span>资源枢纽 <small>统一管理调度</small></div>
+                  <a class="sec-card-wide" href="http://10.8.0.8:18080" target="_blank" rel="noopener">
+                    <div class="logo" style="background:linear-gradient(135deg,#818cf8,#4338ca)"><svg
+                        viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" />
+                        <path d="M9 12l2 2 4-4" />
+                      </svg></div>
+                    <div class="w-body">
+                      <div class="w-name">接口管理后台 <span class="badge">统一调度</span></div>
+                      <div class="w-desc">统一管理调度：本地推理服务 · 外部模型账号池</div>
+                    </div>
+                  </a>
+                </section>
 
-            <!-- 推理服务 -->
-            <section class="sec">
-              <div class="sec-title"><span class="sec-tag infer">infer</span>推理服务 <small>本地模型 · 开箱即用</small></div>
-              <div class="infer-grid">
-                <div class="card">
-                  <div class="card-top">
-                    <div class="logo" style="background:linear-gradient(135deg,#f472b6,#be185d)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></div>
-                    <div class="name">本地模型</div>
+                <!-- 推理服务 -->
+                <section class="sec">
+                  <div class="sec-title"><span class="sec-tag infer">infer</span>推理服务 <small>本地模型 · 开箱即用</small></div>
+                  <div class="infer-grid">
+                    <div class="card">
+                      <div class="card-top">
+                        <div class="logo" style="background:linear-gradient(135deg,#f472b6,#be185d)"><svg
+                            viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <ellipse cx="12" cy="5" rx="8" ry="3" />
+                            <path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5" />
+                            <path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
+                          </svg></div>
+                        <div class="name">本地模型</div>
+                      </div>
+                      <div class="model-list">
+                        <div class="model-line">Qwen3-Coder-30B<small>MoE · 代码</small></div>
+                        <div class="model-line">Qwen3.8-27B<small>多模态</small></div>
+                        <div class="model-line">Qwen3.6-35B<small>MoE · 多模态</small></div>
+                      </div>
+                    </div>
+                    <a class="card" href="http://10.8.0.8:8081" target="_blank" rel="noopener">
+                      <div class="card-top">
+                        <div class="logo" style="background:linear-gradient(135deg,#22c55e,#15803d)"><svg
+                            viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <path
+                              d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.5 8.5 0 1 1 16.1-3.8z" />
+                          </svg></div>
+                        <div class="name">对话助手<span class="badge intra">仅内网</span></div>
+                      </div>
+                      <div class="desc">打开即用的聊天界面，直接与 AI 对话</div>
+                      <div class="card-foot">
+                        <span class="route intra">10.8.0.8:8081</span>
+                        <span class="dot intra"></span>
+                      </div>
+                    </a>
                   </div>
-                  <div class="model-list">
-                    <div class="model-line">Qwen3-Coder-30B<small>MoE · 代码</small></div>
-                    <div class="model-line">Qwen3.8-27B<small>多模态</small></div>
-                    <div class="model-line">Qwen3.6-35B<small>MoE · 多模态</small></div>
-                  </div>
-                </div>
-                <a class="card" href="http://10.8.0.8:8081" target="_blank" rel="noopener">
-                  <div class="card-top">
-                    <div class="logo" style="background:linear-gradient(135deg,#22c55e,#15803d)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.5 8.5 0 1 1 16.1-3.8z"/></svg></div>
-                    <div class="name">网页对话助手<span class="badge intra">仅内网</span></div>
-                  </div>
-                  <div class="desc">打开即用的聊天界面，直接与 AI 对话</div>
-                  <div class="card-foot">
-                    <span class="route intra">10.8.0.8:8081</span>
-                    <span class="dot intra"></span>
-                  </div>
-                </a>
-              </div>
-            </section>
+                </section>
               </div><!-- /soft-mid-main -->
 
               <!-- 可观测性 · 右侧纵柱（位于资源枢纽 / 推理服务层右侧） -->
@@ -1028,28 +1072,56 @@
                 <div class="obs-col-body">
                   <div class="obs-node">
                     <div class="obs-line">
-                      <span class="mini" style="background:linear-gradient(135deg,#f59e0b,#b45309);width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg></span>
-                      <a href="/grafana">监控看板<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg></a>
+                      <span class="mini"
+                        style="background:linear-gradient(135deg,#f59e0b,#b45309);width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff"><svg
+                          viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+                          stroke-linejoin="round" style="width:13px;height:13px">
+                          <path d="M3 3v18h18" />
+                          <path d="M7 15l4-5 3 3 5-7" />
+                        </svg></span>
+                      <a href="/grafana">监控看板<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                          stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M7 17L17 7" />
+                          <path d="M8 7h9v9" />
+                        </svg></a>
                     </div>
                     <span class="obs-role">集中展示</span>
                   </div>
                   <div class="obs-node">
                     <div class="obs-line">
-                      <span class="mini" style="background:linear-gradient(135deg,#f87171,#dc2626);width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
+                      <span class="mini"
+                        style="background:linear-gradient(135deg,#f87171,#dc2626);width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff"><svg
+                          viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+                          stroke-linejoin="round" style="width:13px;height:13px">
+                          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+                          <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+                        </svg></span>
                       <b>告警中心</b>
                     </div>
                     <span class="obs-role">推送钉钉</span>
                   </div>
                   <div class="obs-node">
                     <div class="obs-line">
-                      <span class="mini" style="background:linear-gradient(135deg,#f97316,#c2410c);width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></span>
+                      <span class="mini"
+                        style="background:linear-gradient(135deg,#f97316,#c2410c);width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff"><svg
+                          viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+                          stroke-linejoin="round" style="width:13px;height:13px">
+                          <ellipse cx="12" cy="6" rx="8" ry="3" />
+                          <path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6" />
+                          <path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
+                        </svg></span>
                       <a href="/prom">指标存储</a>
                     </div>
                     <span class="obs-role">集中存储</span>
                   </div>
                   <div class="obs-node">
                     <div class="obs-line">
-                      <span class="mini" style="background:linear-gradient(135deg,#94a3b8,#475569);width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M22 12h-4l-3 8-6-16-3 8H2"/></svg></span>
+                      <span class="mini"
+                        style="background:linear-gradient(135deg,#94a3b8,#475569);width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff"><svg
+                          viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+                          stroke-linejoin="round" style="width:13px;height:13px">
+                          <path d="M22 12h-4l-3 8-6-16-3 8H2" />
+                        </svg></span>
                       <b>节点 / 容器 / 显卡 采集</b>
                     </div>
                     <span class="obs-role">数据采集</span>
@@ -1061,38 +1133,56 @@
             <!-- 4 基础服务 · 横向全宽 -->
             <section class="sec soft-bot">
               <div class="sec-title"><span class="sec-tag base">base</span>基础服务 <small>平台公共能力</small></div>
-            <div class="sec-wide-grid">
-              <div class="sec-card-wide">
-                <div class="logo" style="background:linear-gradient(135deg,#34d399,#047857)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="5" r="2.5"/><circle cx="19" cy="5" r="2.5"/><circle cx="12" cy="19" r="2.5"/><path d="M5 7.5V15a3 3 0 0 0 3 3h4M19 7.5V12h-7v4.5"/></svg></div>
-                <div class="w-body">
-                  <div class="w-name">网关</div>
-                  <div class="w-desc">统一入口 · 按路径分流</div>
+              <div class="sec-wide-grid">
+                <div class="sec-card-wide">
+                  <div class="logo" style="background:linear-gradient(135deg,#34d399,#047857)"><svg viewBox="0 0 24 24"
+                      fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="5" cy="5" r="2.5" />
+                      <circle cx="19" cy="5" r="2.5" />
+                      <circle cx="12" cy="19" r="2.5" />
+                      <path d="M5 7.5V15a3 3 0 0 0 3 3h4M19 7.5V12h-7v4.5" />
+                    </svg></div>
+                  <div class="w-body">
+                    <div class="w-name">网关</div>
+                    <div class="w-desc">统一入口 · 按路径分流</div>
+                  </div>
+                </div>
+                <div class="sec-card-wide">
+                  <div class="logo" style="background:linear-gradient(135deg,#38bdf8,#0284c7)"><svg viewBox="0 0 24 24"
+                      fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5" />
+                      <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5" />
+                    </svg></div>
+                  <div class="w-body">
+                    <div class="w-name">虚拟内网</div>
+                    <div class="w-desc">跨设备安全组网 · 内网直连互访</div>
+                  </div>
+                </div>
+                <div class="sec-card-wide">
+                  <div class="logo" style="background:linear-gradient(135deg,#fbbf24,#d97706)"><svg viewBox="0 0 24 24"
+                      fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
+                    </svg></div>
+                  <div class="w-body">
+                    <div class="w-name">网络代理</div>
+                    <div class="w-desc">统一出口代理 · 按规则智能分流</div>
+                  </div>
+                </div>
+                <div class="sec-card-wide">
+                  <div class="logo" style="background:linear-gradient(135deg,#f87171,#dc2626)"><svg viewBox="0 0 24 24"
+                      fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" />
+                      <path d="M9 12l2 2 4-4" />
+                    </svg></div>
+                  <div class="w-body">
+                    <div class="w-name">安全</div>
+                    <div class="w-desc">密钥管理 · 访问控制 · 审计记录</div>
+                  </div>
                 </div>
               </div>
-              <div class="sec-card-wide">
-                <div class="logo" style="background:linear-gradient(135deg,#38bdf8,#0284c7)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg></div>
-                <div class="w-body">
-                  <div class="w-name">虚拟内网</div>
-                  <div class="w-desc">跨设备安全组网 · 内网直连互访</div>
-                </div>
-              </div>
-              <div class="sec-card-wide">
-                <div class="logo" style="background:linear-gradient(135deg,#fbbf24,#d97706)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></div>
-                <div class="w-body">
-                  <div class="w-name">网络代理</div>
-                  <div class="w-desc">统一出口代理 · 按规则智能分流</div>
-                </div>
-              </div>
-              <div class="sec-card-wide">
-                <div class="logo" style="background:linear-gradient(135deg,#f87171,#dc2626)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg></div>
-                <div class="w-body">
-                  <div class="w-name">安全</div>
-                  <div class="w-desc">密钥管理 · 访问控制 · 审计记录</div>
-                </div>
-              </div>
-            </div>
-          </section>
-      </div>
+            </section>
+          </div>
 
           <!-- 硬件层 -->
           <div class="layer hw big">
@@ -1100,21 +1190,35 @@
             <div class="sec-cards">
               <div class="card">
                 <div class="card-top">
-                  <div class="logo" style="background:linear-gradient(135deg,#a78bfa,#6d28d9)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><path d="M9 12h6"/></svg></div>
+                  <div class="logo" style="background:linear-gradient(135deg,#a78bfa,#6d28d9)"><svg viewBox="0 0 24 24"
+                      fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="6" y="6" width="12" height="12" rx="2" />
+                      <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+                      <path d="M9 12h6" />
+                    </svg></div>
                   <div class="name">GPU 算力</div>
                 </div>
                 <div class="desc">2 × RTX 4090 24GB · 推理加速与模型加载</div>
               </div>
               <div class="card">
                 <div class="card-top">
-                  <div class="logo" style="background:linear-gradient(135deg,#34d399,#047857)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg></div>
+                  <div class="logo" style="background:linear-gradient(135deg,#34d399,#047857)"><svg viewBox="0 0 24 24"
+                      fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="4" y="4" width="16" height="16" rx="2" />
+                      <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4" />
+                    </svg></div>
                   <div class="name">CPU / 内存</div>
                 </div>
                 <div class="desc">AMD EPYC 7302 · 32 线程 · 125GB 内存</div>
               </div>
               <div class="card">
                 <div class="card-top">
-                  <div class="logo" style="background:linear-gradient(135deg,#38bdf8,#0284c7)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></div>
+                  <div class="logo" style="background:linear-gradient(135deg,#38bdf8,#0284c7)"><svg viewBox="0 0 24 24"
+                      fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <ellipse cx="12" cy="6" rx="8" ry="3" />
+                      <path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6" />
+                      <path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
+                    </svg></div>
                   <div class="name">存储</div>
                 </div>
                 <div class="desc">NVMe 1.8TB · 模型权重 / 镜像 / 数据卷</div>
