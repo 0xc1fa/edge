@@ -39,6 +39,58 @@
       margin: 0 auto;
     }
 
+    /* ========== 图标引用（symbol 库在 body 顶部）与迷你色块 ========== */
+    .ic {
+      width: 20px;
+      height: 20px;
+    }
+
+    .role-ico .ic {
+      width: 24px;
+      height: 24px;
+    }
+
+    .mini .ic,
+    .obs-node a .ic {
+      width: 13px;
+      height: 13px;
+    }
+
+    .obs-node a .ic {
+      margin-left: 3px;
+      vertical-align: -2px;
+    }
+
+    .obs-node a:hover .ic {
+      transform: translate(1px, -1px);
+    }
+
+    .mini {
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+    }
+
+    /* 色板：与 .logo / .mini / .role-ico 组合使用（135deg 渐变） */
+    .g-blue    { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
+    .g-red     { background: linear-gradient(135deg, #f87171, #dc2626); }
+    .g-sky     { background: linear-gradient(135deg, #38bdf8, #0284c7); }
+    .g-indigo  { background: linear-gradient(135deg, #818cf8, #4f46e5); }
+    .g-pink    { background: linear-gradient(135deg, #f472b6, #be185d); }
+    .g-green   { background: linear-gradient(135deg, #22c55e, #15803d); }
+    .g-amber   { background: linear-gradient(135deg, #f59e0b, #b45309); }
+    .g-orange  { background: linear-gradient(135deg, #f97316, #c2410c); }
+    .g-gray    { background: linear-gradient(135deg, #94a3b8, #475569); }
+    .g-emerald { background: linear-gradient(135deg, #34d399, #047857); }
+    .g-yellow  { background: linear-gradient(135deg, #fbbf24, #d97706); }
+    .g-violet  { background: linear-gradient(135deg, #a78bfa, #6d28d9); }
+    .g-fuchsia { background: linear-gradient(135deg, #e879f9, #a21caf); }
+
     /* ========== 头部 ========== */
     header {
       text-align: center;
@@ -98,17 +150,8 @@
       box-shadow: 0 4px 10px rgba(16, 24, 40, .15);
     }
 
-    .role-badge.dev .role-ico {
-      background: linear-gradient(135deg, #2563eb, #1d4ed8);
-    }
-
     .role-badge.ops .role-ico {
       background: linear-gradient(135deg, #059669, #047857);
-    }
-
-    .role-badge .role-ico svg {
-      width: 24px;
-      height: 24px;
     }
 
     .rb-txt {
@@ -292,11 +335,14 @@
       align-items: stretch;
     }
 
-
-
     .plat-content {
       flex: 1;
       min-width: 0;
+    }
+
+    /* 平台内相邻层卡片间距 */
+    .plat-content .layer + .layer {
+      margin-top: 16px;
     }
 
     /* ========== 通用卡片 ========== */
@@ -337,11 +383,6 @@
       justify-content: center;
       color: #fff;
       box-shadow: inset 0 -2px 4px rgba(0, 0, 0, .12), 0 4px 10px rgba(16, 24, 40, .14);
-    }
-
-    .logo svg {
-      width: 20px;
-      height: 20px;
     }
 
     .card .name {
@@ -403,39 +444,6 @@
       color: #b54708;
     }
 
-    /* 推理服务 · 本地模型清单 */
-    .model-list {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      margin-top: 2px;
-    }
-
-    .model-line {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: #344054;
-      font-weight: 600;
-      line-height: 1.4;
-    }
-
-    .model-line::before {
-      content: "";
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #a78bfa, #6d28d9);
-      flex-shrink: 0;
-    }
-
-    .model-line small {
-      color: var(--muted);
-      font-weight: 400;
-      font-size: 11px;
-    }
-
     .dot {
       display: inline-block;
       width: 8px;
@@ -475,7 +483,7 @@
       box-shadow: 0 4px 12px rgba(37, 99, 235, .3);
     }
 
-    /* 分层卡片：左侧色带 */
+    /* 分层卡片 */
     .layer {
       background: var(--card);
       border: 1px solid var(--line);
@@ -483,24 +491,6 @@
       padding: 14px 16px;
       position: relative;
       box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
-    }
-
-    .layer::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 4px;
-      border-radius: var(--r) 0 0 var(--r);
-    }
-
-    .layer.soft::before {
-      background: linear-gradient(#2563eb, #7c3aed);
-    }
-
-    .layer.hw::before {
-      background: linear-gradient(#475467, #98a2b3);
     }
 
     .layer.big {
@@ -514,7 +504,6 @@
       font-size: 13px;
       font-weight: 700;
       margin-bottom: 12px;
-      padding-left: 8px;
     }
 
     .layer-head .dot-accent {
@@ -605,10 +594,10 @@
       min-width: 0;
     }
 
-    /* 应用栈 · 三张卡等高 */
+    /* 应用栈 · 卡片（4 张：代码仓库 / 镜像仓库 / 容器管理 / Agent 框架） */
     .stacks-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 10px;
     }
 
@@ -616,12 +605,12 @@
       min-width: 0;
     }
 
-    /* 三卡等高后 desc 均分剩余空间，内部结构对齐 */
+    /* 卡等高后 desc 均分剩余空间，内部结构对齐 */
     .stacks-grid .desc {
       flex: 1;
     }
 
-    /* 单服务的横条卡（base 区） */
+    /* 单服务的横条卡（hub / base 区） */
     .sec-card-wide {
       display: flex;
       align-items: center;
@@ -632,11 +621,12 @@
       border: 1px solid var(--line);
       text-decoration: none;
       color: inherit;
+      min-width: 0;
       box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
       transition: border-color .15s, box-shadow .15s;
     }
 
-    .sec-card-wide:hover {
+    a.sec-card-wide:hover {
       border-color: #a5b4fc;
       box-shadow: 0 4px 12px rgba(16, 24, 40, .08);
     }
@@ -662,6 +652,17 @@
       line-height: 1.5;
     }
 
+    /* 资源枢纽 · 两卡并排（模型网关 + 算力共享） */
+    .wide-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .wide-2>* {
+      min-width: 0;
+    }
+
     /* ========== 软件层主体 ========== */
     /* 1 应用栈：全宽横向条 */
     .soft-top {
@@ -684,19 +685,87 @@
       gap: 12px;
     }
 
-    .sec .card+.card {
-      margin-top: 10px;
-    }
-
-    /* 推理服务 · 两个子卡片并排 */
+    /* 推理服务 · 入口卡并排 */
     .infer-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
       gap: 10px;
     }
 
-    .infer-grid .card+.card {
-      margin-top: 0;
+    /* 推理服务 · 三卡统一压低（入口卡 + 本地模型卡） */
+    .infer-grid .card,
+    .local-card {
+      padding: 11px 13px;
+      gap: 5px;
+    }
+
+    .infer-grid .card .logo,
+    .local-card .logo {
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
+    }
+
+    .infer-grid .card .logo .ic,
+    .local-card .logo .ic {
+      width: 17px;
+      height: 17px;
+    }
+
+    .infer-grid .card .card-top,
+    .local-card .card-top {
+      gap: 8px;
+    }
+
+    /* 推理服务 · 本地模型（整宽标准卡 · 三栏清单） */
+    .local-card {
+      margin-top: 10px;
+    }
+
+    .local-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      flex: 1;
+      margin-top: 2px;
+    }
+
+    .local-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 4px 16px;
+      min-width: 0;
+    }
+
+    .local-cell:first-child {
+      padding-left: 0;
+    }
+
+    .local-cell + .local-cell {
+      border-left: 1px dashed #e2e8f0;
+    }
+
+    .local-cell b {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: #344054;
+    }
+
+    .local-cell b::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #a78bfa, #6d28d9);
+      flex-shrink: 0;
+    }
+
+    .local-cell small {
+      color: var(--muted);
+      font-size: 11px;
     }
 
     .sec-wide-grid {
@@ -747,10 +816,6 @@
       flex: 1;
     }
 
-    .obs-col-body .obs-node {
-      flex: 1;
-    }
-
     .obs-node {
       display: flex;
       flex-direction: column;
@@ -782,18 +847,6 @@
 
     .obs-node a:hover {
       color: #7c3aed;
-    }
-
-    .obs-node a svg {
-      width: 13px;
-      height: 13px;
-      margin-left: 3px;
-      vertical-align: -2px;
-      transition: transform .15s ease;
-    }
-
-    .obs-node a:hover svg {
-      transform: translate(1px, -1px);
     }
 
     .obs-node .obs-role {
@@ -868,6 +921,10 @@
       .sec-wide-grid {
         grid-template-columns: repeat(2, 1fr);
       }
+
+      .stacks-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
     }
 
     @media (max-width: 600px) {
@@ -876,6 +933,23 @@
       }
 
       .infer-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .local-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .local-cell {
+        padding: 7px 0;
+      }
+
+      .local-cell + .local-cell {
+        border-left: none;
+        border-top: 1px dashed #e2e8f0;
+      }
+
+      .wide-2 {
         grid-template-columns: 1fr;
       }
 
@@ -891,6 +965,109 @@
 </head>
 
 <body>
+  <!-- ===== 图标库：全部图标在此定义。卡片引用方式：
+         <svg class="ic"><use href="#i-图标名"></use></svg>
+       新增卡片两步：① 挑图标（或在此新增 <symbol>）② 复制现成卡片结构改文案/链接。
+       入口地址未定的服务先用 <div class="card"> 占位，确定后改 <a href> 即获悬浮动效。 ===== -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <circle cx="12" cy="8" r="4"></circle>
+        <path d="M5 20c0-3.3 3.1-5.5 7-5.5s7 2.2 7 5.5"></path>
+      </symbol>
+      <symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path d="M8 6l-5 6 5 6M16 6l5 6-5 6M13 3l-2 18"></path>
+      </symbol>
+      <symbol id="i-db" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <ellipse cx="12" cy="6" rx="8" ry="3"></ellipse>
+        <path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"></path>
+        <path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"></path>
+      </symbol>
+      <symbol id="i-boxes" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="8" rx="2"></rect>
+        <rect x="3" y="13" width="18" height="8" rx="2"></rect>
+        <path d="M3 11v2M21 11v2"></path>
+      </symbol>
+      <symbol id="i-shield-check" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path d="M12 2l8 4v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"></path>
+        <path d="M9 12l2 2 4-4"></path>
+      </symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path
+          d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.5 8.5 0 1 1 16.1-3.8z"></path>
+      </symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path d="M3 3v18h18"></path>
+        <path d="M7 15l4-5 3 3 5-7"></path>
+      </symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path>
+        <path d="M13.7 21a2 2 0 0 1-3.4 0"></path>
+      </symbol>
+      <symbol id="i-wave" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path d="M22 12h-4l-3 8-6-16-3 8H2"></path>
+      </symbol>
+      <symbol id="i-gw" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <circle cx="5" cy="5" r="2.5"></circle>
+        <circle cx="19" cy="5" r="2.5"></circle>
+        <circle cx="12" cy="19" r="2.5"></circle>
+        <path d="M5 7.5V15a3 3 0 0 0 3 3h4M19 7.5V12h-7v4.5"></path>
+      </symbol>
+      <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"></path>
+        <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"></path>
+      </symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"></circle>
+        <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"></path>
+      </symbol>
+      <symbol id="i-cpu" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <rect x="6" y="6" width="12" height="12" rx="2"></rect>
+        <path d="M12 2v4M12 18v4M2 12h4M18 12h4"></path>
+        <path d="M9 12h6"></path>
+      </symbol>
+      <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+        <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"></path>
+      </symbol>
+      <symbol id="i-share" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path d="m8 3 4 4-4 4"></path>
+        <path d="M4 7h16"></path>
+        <path d="m16 21-4-4 4-4"></path>
+        <path d="M20 17H4"></path>
+      </symbol>
+      <symbol id="i-robot" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <rect x="4" y="9" width="16" height="10" rx="2"></rect>
+        <path d="M12 9V5"></path>
+        <circle cx="12" cy="3.5" r="1.4" fill="#fff" stroke="none"></circle>
+        <circle cx="9" cy="13.5" r="1.3" fill="#fff" stroke="none"></circle>
+        <circle cx="15" cy="13.5" r="1.3" fill="#fff" stroke="none"></circle>
+        <path d="M9.5 17.2h5"></path>
+      </symbol>
+      <symbol id="i-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path d="M7 17L17 7"></path>
+        <path d="M8 7h9v9"></path>
+      </symbol>
+    </defs>
+  </svg>
+
   <div class="container">
     <header>
       <h1>Agent Home</h1>
@@ -903,12 +1080,8 @@
       <div class="app-body">
         <!-- 角色1：开发者 / 业务方 -->
         <a class="role-badge dev" href="/gitea">
-          <span class="role-ico">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"
-              stroke-linejoin="round">
-              <circle cx="12" cy="8" r="4"></circle>
-              <path d="M5 20c0-3.3 3.1-5.5 7-5.5s7 2.2 7 5.5"></path>
-            </svg>
+          <span class="role-ico g-blue">
+            <svg class="ic"><use href="#i-user"></use></svg>
           </span>
           <span class="rb-txt">
             <span class="rb-corresp"><i></i>平台外 · 业务应用</span>
@@ -955,11 +1128,7 @@
               <div class="stacks-grid">
                 <a class="card" href="/gitea">
                   <div class="card-top">
-                    <div class="logo" style="background:linear-gradient(135deg,#f87171,#dc2626)"><svg
-                        viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round">
-                        <path d="M8 6l-5 6 5 6M16 6l5 6-5 6M13 3l-2 18" />
-                      </svg></div>
+                    <div class="logo g-red"><svg class="ic"><use href="#i-code"></use></svg></div>
                     <div class="name">代码仓库</div>
                   </div>
                   <div class="desc">存放业务代码 · 版本管理</div>
@@ -970,13 +1139,7 @@
                 </a>
                 <a class="card" href="/registry">
                   <div class="card-top">
-                    <div class="logo" style="background:linear-gradient(135deg,#38bdf8,#0284c7)"><svg
-                        viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round">
-                        <ellipse cx="12" cy="6" rx="8" ry="3" />
-                        <path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6" />
-                        <path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
-                      </svg></div>
+                    <div class="logo g-sky"><svg class="ic"><use href="#i-db"></use></svg></div>
                     <div class="name">镜像仓库</div>
                   </div>
                   <div class="desc">存放应用镜像 · 公共镜像加速拉取</div>
@@ -987,13 +1150,7 @@
                 </a>
                 <a class="card" href="https://10.8.0.8:9443" target="_blank" rel="noopener">
                   <div class="card-top">
-                    <div class="logo" style="background:linear-gradient(135deg,#818cf8,#4f46e5)"><svg
-                        viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round">
-                        <rect x="3" y="3" width="18" height="8" rx="2" />
-                        <rect x="3" y="13" width="18" height="8" rx="2" />
-                        <path d="M3 11v2M21 11v2" />
-                      </svg></div>
+                    <div class="logo g-indigo"><svg class="ic"><use href="#i-boxes"></use></svg></div>
                     <div class="name">容器管理<span class="badge intra">仅内网</span></div>
                   </div>
                   <div class="desc">可视化部署与管理应用容器</div>
@@ -1002,6 +1159,14 @@
                     <span class="dot intra"></span>
                   </div>
                 </a>
+                <!-- TODO Agent 框架：接入地址确定后改 <a class="card" href="..."> 并补 route -->
+                <div class="card">
+                  <div class="card-top">
+                    <div class="logo g-fuchsia"><svg class="ic"><use href="#i-robot"></use></svg></div>
+                    <div class="name">Agent 框架</div>
+                  </div>
+                  <div class="desc">面向业务应用的 Agent 运行时 · 编排与工具调用</div>
+                </div>
               </div>
             </section>
 
@@ -1011,49 +1176,43 @@
                 <!-- 资源枢纽 -->
                 <section class="sec">
                   <div class="sec-title"><span class="sec-tag hub">hub</span>资源枢纽 <small>统一管理调度</small></div>
-                  <a class="sec-card-wide" href="http://10.8.0.8:18080" target="_blank" rel="noopener">
-                    <div class="logo" style="background:linear-gradient(135deg,#818cf8,#4338ca)"><svg
-                        viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round">
-                        <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" />
-                        <path d="M9 12l2 2 4-4" />
-                      </svg></div>
-                    <div class="w-body">
-                      <div class="w-name">接口管理后台 <span class="badge">统一调度</span></div>
-                      <div class="w-desc">统一管理调度：本地推理服务 · 外部模型账号池</div>
+                  <div class="wide-2">
+                    <a class="sec-card-wide" href="http://10.8.0.8:18080" target="_blank" rel="noopener">
+                      <div class="logo g-indigo"><svg class="ic"><use href="#i-shield-check"></use></svg></div>
+                      <div class="w-body">
+                        <div class="w-name">模型网关 <span class="badge">统一调度</span></div>
+                        <div class="w-desc">统一管理调度：本地推理服务 · 外部模型账号池</div>
+                      </div>
+                    </a>
+                    <!-- TODO 算力共享：对外入口地址确定后改 <a class="sec-card-wide" href="..."> -->
+                    <div class="sec-card-wide">
+                      <div class="logo g-violet"><svg class="ic"><use href="#i-share"></use></svg></div>
+                      <div class="w-body">
+                        <div class="w-name">算力共享</div>
+                        <div class="w-desc">闲置时对外提供算力 · 资源按需共享调度</div>
+                      </div>
                     </div>
-                  </a>
+                  </div>
                 </section>
 
                 <!-- 推理服务 -->
                 <section class="sec">
                   <div class="sec-title"><span class="sec-tag infer">infer</span>推理服务 <small>本地模型 · 开箱即用</small></div>
                   <div class="infer-grid">
-                    <div class="card">
+                    <a class="card" href="http://10.8.0.8:18000" target="_blank" rel="noopener">
                       <div class="card-top">
-                        <div class="logo" style="background:linear-gradient(135deg,#f472b6,#be185d)"><svg
-                            viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
-                            stroke-linejoin="round">
-                            <ellipse cx="12" cy="5" rx="8" ry="3" />
-                            <path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5" />
-                            <path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
-                          </svg></div>
-                        <div class="name">本地模型</div>
+                        <div class="logo g-amber"><svg class="ic"><use href="#i-server"></use></svg></div>
+                        <div class="name">推理引擎<span class="badge intra">仅内网</span></div>
                       </div>
-                      <div class="model-list">
-                        <div class="model-line">Qwen3-Coder-30B<small>MoE · 代码</small></div>
-                        <div class="model-line">Qwen3.8-27B<small>多模态</small></div>
-                        <div class="model-line">Qwen3.6-35B<small>MoE · 多模态</small></div>
+                      <div class="desc">vLLM 高性能推理 · OpenAI 兼容 API</div>
+                      <div class="card-foot">
+                        <span class="route intra">10.8.0.8:18000</span>
+                        <span class="dot intra"></span>
                       </div>
-                    </div>
+                    </a>
                     <a class="card" href="http://10.8.0.8:8081" target="_blank" rel="noopener">
                       <div class="card-top">
-                        <div class="logo" style="background:linear-gradient(135deg,#22c55e,#15803d)"><svg
-                            viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
-                            stroke-linejoin="round">
-                            <path
-                              d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.5 8.5 0 1 1 16.1-3.8z" />
-                          </svg></div>
+                        <div class="logo g-green"><svg class="ic"><use href="#i-chat"></use></svg></div>
                         <div class="name">对话助手<span class="badge intra">仅内网</span></div>
                       </div>
                       <div class="desc">打开即用的聊天界面，直接与 AI 对话</div>
@@ -1062,6 +1221,28 @@
                         <span class="dot intra"></span>
                       </div>
                     </a>
+                  </div>
+
+                  <!-- 本地模型：推理引擎承载的模型清单 -->
+                  <div class="card local-card">
+                    <div class="card-top">
+                      <div class="logo g-pink"><svg class="ic"><use href="#i-db"></use></svg></div>
+                      <div class="name">本地模型</div>
+                    </div>
+                    <div class="local-grid">
+                      <div class="local-cell">
+                        <b>Qwen3-Coder-30B</b>
+                        <small>MoE · 代码</small>
+                      </div>
+                      <div class="local-cell">
+                        <b>Qwen3.8-27B</b>
+                        <small>多模态</small>
+                      </div>
+                      <div class="local-cell">
+                        <b>Qwen3.6-35B</b>
+                        <small>MoE · 多模态</small>
+                      </div>
+                    </div>
                   </div>
                 </section>
               </div><!-- /soft-mid-main -->
@@ -1072,56 +1253,28 @@
                 <div class="obs-col-body">
                   <div class="obs-node">
                     <div class="obs-line">
-                      <span class="mini"
-                        style="background:linear-gradient(135deg,#f59e0b,#b45309);width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff"><svg
-                          viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
-                          stroke-linejoin="round" style="width:13px;height:13px">
-                          <path d="M3 3v18h18" />
-                          <path d="M7 15l4-5 3 3 5-7" />
-                        </svg></span>
-                      <a href="/grafana">监控看板<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                          stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M7 17L17 7" />
-                          <path d="M8 7h9v9" />
-                        </svg></a>
+                      <span class="mini g-amber"><svg class="ic"><use href="#i-chart"></use></svg></span>
+                      <a href="/grafana">监控看板<svg class="ic"><use href="#i-ext"></use></svg></a>
                     </div>
                     <span class="obs-role">集中展示</span>
                   </div>
                   <div class="obs-node">
                     <div class="obs-line">
-                      <span class="mini"
-                        style="background:linear-gradient(135deg,#f87171,#dc2626);width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff"><svg
-                          viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
-                          stroke-linejoin="round" style="width:13px;height:13px">
-                          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-                          <path d="M13.7 21a2 2 0 0 1-3.4 0" />
-                        </svg></span>
+                      <span class="mini g-red"><svg class="ic"><use href="#i-bell"></use></svg></span>
                       <b>告警中心</b>
                     </div>
                     <span class="obs-role">推送钉钉</span>
                   </div>
                   <div class="obs-node">
                     <div class="obs-line">
-                      <span class="mini"
-                        style="background:linear-gradient(135deg,#f97316,#c2410c);width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff"><svg
-                          viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
-                          stroke-linejoin="round" style="width:13px;height:13px">
-                          <ellipse cx="12" cy="6" rx="8" ry="3" />
-                          <path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6" />
-                          <path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
-                        </svg></span>
-                      <a href="/prom">指标存储</a>
+                      <span class="mini g-orange"><svg class="ic"><use href="#i-db"></use></svg></span>
+                      <a href="/prom">指标存储<svg class="ic"><use href="#i-ext"></use></svg></a>
                     </div>
                     <span class="obs-role">集中存储</span>
                   </div>
                   <div class="obs-node">
                     <div class="obs-line">
-                      <span class="mini"
-                        style="background:linear-gradient(135deg,#94a3b8,#475569);width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff"><svg
-                          viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
-                          stroke-linejoin="round" style="width:13px;height:13px">
-                          <path d="M22 12h-4l-3 8-6-16-3 8H2" />
-                        </svg></span>
+                      <span class="mini g-gray"><svg class="ic"><use href="#i-wave"></use></svg></span>
                       <b>节点 / 容器 / 显卡 采集</b>
                     </div>
                     <span class="obs-role">数据采集</span>
@@ -1135,46 +1288,28 @@
               <div class="sec-title"><span class="sec-tag base">base</span>基础服务 <small>平台公共能力</small></div>
               <div class="sec-wide-grid">
                 <div class="sec-card-wide">
-                  <div class="logo" style="background:linear-gradient(135deg,#34d399,#047857)"><svg viewBox="0 0 24 24"
-                      fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <circle cx="5" cy="5" r="2.5" />
-                      <circle cx="19" cy="5" r="2.5" />
-                      <circle cx="12" cy="19" r="2.5" />
-                      <path d="M5 7.5V15a3 3 0 0 0 3 3h4M19 7.5V12h-7v4.5" />
-                    </svg></div>
+                  <div class="logo g-emerald"><svg class="ic"><use href="#i-gw"></use></svg></div>
                   <div class="w-body">
                     <div class="w-name">网关</div>
                     <div class="w-desc">统一入口 · 按路径分流</div>
                   </div>
                 </div>
                 <div class="sec-card-wide">
-                  <div class="logo" style="background:linear-gradient(135deg,#38bdf8,#0284c7)"><svg viewBox="0 0 24 24"
-                      fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5" />
-                      <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5" />
-                    </svg></div>
+                  <div class="logo g-sky"><svg class="ic"><use href="#i-link"></use></svg></div>
                   <div class="w-body">
                     <div class="w-name">虚拟内网</div>
                     <div class="w-desc">跨设备安全组网 · 内网直连互访</div>
                   </div>
                 </div>
                 <div class="sec-card-wide">
-                  <div class="logo" style="background:linear-gradient(135deg,#fbbf24,#d97706)"><svg viewBox="0 0 24 24"
-                      fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <circle cx="12" cy="12" r="9" />
-                      <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
-                    </svg></div>
+                  <div class="logo g-yellow"><svg class="ic"><use href="#i-globe"></use></svg></div>
                   <div class="w-body">
                     <div class="w-name">网络代理</div>
                     <div class="w-desc">统一出口代理 · 按规则智能分流</div>
                   </div>
                 </div>
                 <div class="sec-card-wide">
-                  <div class="logo" style="background:linear-gradient(135deg,#f87171,#dc2626)"><svg viewBox="0 0 24 24"
-                      fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" />
-                      <path d="M9 12l2 2 4-4" />
-                    </svg></div>
+                  <div class="logo g-red"><svg class="ic"><use href="#i-shield-check"></use></svg></div>
                   <div class="w-body">
                     <div class="w-name">安全</div>
                     <div class="w-desc">密钥管理 · 访问控制 · 审计记录</div>
@@ -1190,35 +1325,21 @@
             <div class="sec-cards">
               <div class="card">
                 <div class="card-top">
-                  <div class="logo" style="background:linear-gradient(135deg,#a78bfa,#6d28d9)"><svg viewBox="0 0 24 24"
-                      fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <rect x="6" y="6" width="12" height="12" rx="2" />
-                      <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
-                      <path d="M9 12h6" />
-                    </svg></div>
+                  <div class="logo g-violet"><svg class="ic"><use href="#i-cpu"></use></svg></div>
                   <div class="name">GPU 算力</div>
                 </div>
                 <div class="desc">2 × RTX 4090 24GB · 推理加速与模型加载</div>
               </div>
               <div class="card">
                 <div class="card-top">
-                  <div class="logo" style="background:linear-gradient(135deg,#34d399,#047857)"><svg viewBox="0 0 24 24"
-                      fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <rect x="4" y="4" width="16" height="16" rx="2" />
-                      <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4" />
-                    </svg></div>
+                  <div class="logo g-emerald"><svg class="ic"><use href="#i-server"></use></svg></div>
                   <div class="name">CPU / 内存</div>
                 </div>
                 <div class="desc">AMD EPYC 7302 · 32 线程 · 125GB 内存</div>
               </div>
               <div class="card">
                 <div class="card-top">
-                  <div class="logo" style="background:linear-gradient(135deg,#38bdf8,#0284c7)"><svg viewBox="0 0 24 24"
-                      fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <ellipse cx="12" cy="6" rx="8" ry="3" />
-                      <path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6" />
-                      <path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
-                    </svg></div>
+                  <div class="logo g-sky"><svg class="ic"><use href="#i-db"></use></svg></div>
                   <div class="name">存储</div>
                 </div>
                 <div class="desc">NVMe 1.8TB · 模型权重 / 镜像 / 数据卷</div>
