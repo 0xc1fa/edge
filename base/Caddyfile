@@ -62,9 +62,17 @@
 		reverse_proxy 127.0.0.1:18080
 	}
 
-	# ---- 兜底：服务导航首页（hao123 风格）----
+	# ---- /home → 开发者内部导航（原 index.html）----
+	handle /home {
+		root * /srv/www
+		rewrite * /index.html
+		file_server
+	}
+
+	# ---- 兜底：对外 Landing Page（landing.html）----
 	handle {
 		root * /srv/www
+		rewrite * /landing.html
 		file_server
 	}
 }

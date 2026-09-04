@@ -1,0 +1,1624 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!--
+    TODO(security): In production, enforce CSP via HTTP response header rather than meta tag.
+    Configure in Caddy: header Content-Security-Policy "default-src 'self'; ..."
+  -->
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none';">
+  <title>Edge · Every Edge is the Center.</title>
+  <meta name="description" content="Edge 交付私有边缘智能一体机：算力、本地大模型与驻场落地一起交付，让每个组织拥有自己的 AI。">
+  <meta name="keywords" content="边缘算力, 边缘智能, 私有AI, 一体机, 本地大模型, FDE驻场, RTX PRO 6000">
+  <style>
+    /* =====================================================================
+       Design Tokens — 白底 + 单一强调色
+    ===================================================================== */
+    :root {
+      --bg: #FFFFFF;
+      --bg-soft: #F7F8FA;
+      --bg-soft-2: #F1F3F7;
+      --ink: #0B1220;
+      --ink-2: #2B3342;
+      --muted: #5D6779;
+      --muted-2: #8A93A3;
+      --line: #E7EAF0;
+      --line-2: #D9DEE8;
+
+      --accent: #2F5BF3;
+      --accent-ink: #1E3FD6;
+      --accent-soft: rgba(47, 91, 243, .08);
+      --accent-line: rgba(47, 91, 243, .22);
+
+      /* 仅在「绿电智算」方案内使用的行业语义色 */
+      --green: #17A07A;
+      --green-soft: rgba(23, 160, 122, .09);
+      --green-line: rgba(23, 160, 122, .28);
+
+      --nav-h: 64px;
+      --r: 14px;
+      --shadow: 0 1px 2px rgba(11, 18, 32, .04), 0 8px 28px rgba(11, 18, 32, .05);
+    }
+
+    *,
+    *::before,
+    *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      font-size: 16px;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--ink-2);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    button {
+      cursor: pointer;
+      font-family: inherit;
+      border: none;
+      background: none;
+      color: inherit;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+      border-radius: 6px;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+    }
+
+    /* =====================================================================
+       Typography / Utilities
+    ===================================================================== */
+    .kicker {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    .h2 {
+      font-size: clamp(26px, 3.2vw, 40px);
+      font-weight: 800;
+      line-height: 1.25;
+      letter-spacing: -.5px;
+      color: var(--ink);
+      margin: 12px 0 12px;
+    }
+
+    .lead {
+      font-size: 16px;
+      color: var(--muted);
+      max-width: 560px;
+    }
+
+    .lead-center {
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .6px;
+      padding: 4px 11px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid var(--accent-line);
+    }
+
+    .chip-plain {
+      background: var(--bg-soft-2);
+      color: var(--muted);
+      border-color: var(--line);
+    }
+
+    .chip-green {
+      background: var(--green-soft);
+      color: var(--green);
+      border-color: var(--green-line);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 11px 24px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      transition: transform .15s, box-shadow .15s, background .15s, border-color .15s, color .15s;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 6px 18px rgba(47, 91, 243, .22);
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-ink);
+      box-shadow: 0 8px 24px rgba(47, 91, 243, .3);
+    }
+
+    .btn-ghost {
+      background: #fff;
+      color: var(--ink);
+      border: 1px solid var(--line-2);
+    }
+
+    .btn-ghost:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      box-shadow: var(--shadow);
+    }
+
+    .fu {
+      opacity: 0;
+      transform: translateY(18px);
+      transition: opacity .55s ease, transform .55s ease;
+    }
+
+    .fu.v {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* =====================================================================
+       顶栏 + Tab 切换
+    ===================================================================== */
+    .site-head {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: var(--nav-h);
+      background: rgba(255, 255, 255, .86);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--line);
+      z-index: 1000;
+      transition: box-shadow .2s;
+    }
+
+    .site-head.sc {
+      box-shadow: 0 2px 16px rgba(11, 18, 32, .05);
+    }
+
+    .head-in {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 19px;
+      font-weight: 800;
+      letter-spacing: -.3px;
+      color: var(--ink);
+      flex-shrink: 0;
+    }
+
+    .brand .logo-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
+      background: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .brand .logo-icon svg {
+      width: 17px;
+      height: 17px;
+    }
+
+    .tabs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .tab {
+      position: relative;
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: 14.5px;
+      font-weight: 600;
+      color: var(--muted);
+      transition: color .15s, background .15s;
+    }
+
+    .tab:hover {
+      background: var(--bg-soft);
+      color: var(--ink);
+    }
+
+    .tab.on {
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    main {
+      padding-top: var(--nav-h);
+    }
+
+    .view {
+      display: none;
+    }
+
+    .view.is-active {
+      display: block;
+      animation: viewIn .32s ease both;
+    }
+
+    @keyframes viewIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .block {
+      padding: 88px 0;
+    }
+
+    .block-soft {
+      background: var(--bg-soft);
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .block-head {
+      margin-bottom: 44px;
+    }
+
+    .block-head.center {
+      text-align: center;
+    }
+
+    .block-head.center .lead {
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* =====================================================================
+       Hero
+    ===================================================================== */
+    .hero {
+      padding: 96px 0 88px;
+    }
+
+    .hero-title {
+      font-size: clamp(38px, 7vw, 86px);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -2.5px;
+      color: var(--ink);
+      margin: 18px 0 22px;
+    }
+
+    .hero-title .ac {
+      color: var(--accent);
+    }
+
+    .hero-desc {
+      font-size: clamp(15px, 1.8vw, 19px);
+      color: var(--muted);
+      max-width: 600px;
+      line-height: 1.8;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 34px;
+    }
+
+    .hero-actions .btn {
+      padding: 13px 28px;
+      font-size: 15px;
+    }
+
+    /* =====================================================================
+       问题（失衡）三卡
+    ===================================================================== */
+    .g3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .g2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+    }
+
+    .prob {
+      padding: 28px 26px;
+      border-radius: var(--r);
+      background: #fff;
+      border: 1px solid var(--line);
+      border-top: 2px solid var(--line-2);
+      transition: border-color .2s, transform .2s, box-shadow .2s;
+    }
+
+    .prob:hover {
+      transform: translateY(-3px);
+      border-top-color: var(--accent);
+      box-shadow: var(--shadow);
+    }
+
+    .prob h3 {
+      font-size: 17px;
+      font-weight: 800;
+      color: var(--ink);
+      margin: 14px 0 8px;
+    }
+
+    .prob p {
+      font-size: 13.5px;
+      color: var(--muted);
+      line-height: 1.75;
+    }
+
+    .prob .no {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--accent);
+      letter-spacing: 1px;
+    }
+
+    .turn {
+      margin-top: 44px;
+      text-align: center;
+      font-size: clamp(20px, 2.6vw, 30px);
+      font-weight: 800;
+      line-height: 1.5;
+      color: var(--ink);
+      letter-spacing: -.4px;
+    }
+
+    .turn em {
+      font-style: normal;
+      color: var(--accent);
+    }
+
+    /* =====================================================================
+       方式：三层
+    ===================================================================== */
+    .layers {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .layer {
+      display: flex;
+      gap: 22px;
+      align-items: flex-start;
+      padding: 26px 28px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--accent);
+      border-radius: var(--r);
+      transition: box-shadow .2s, transform .2s;
+    }
+
+    .layer:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow);
+    }
+
+    .layer .idx {
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--accent);
+      letter-spacing: 1px;
+      flex-shrink: 0;
+      padding-top: 3px;
+    }
+
+    .layer h3 {
+      font-size: 17px;
+      font-weight: 800;
+      color: var(--ink);
+      margin: 10px 0 8px;
+    }
+
+    .layer p {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.75;
+    }
+
+    /* =====================================================================
+       方案：纵向行业标签
+    ===================================================================== */
+    .sol-layout {
+      display: grid;
+      grid-template-columns: 224px 1fr;
+      gap: 36px;
+      align-items: start;
+    }
+
+    .vtabs {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      position: sticky;
+      top: calc(var(--nav-h) + 24px);
+    }
+
+    .vtab {
+      text-align: left;
+      padding: 14px 18px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      background: transparent;
+      transition: background .15s, border-color .15s, box-shadow .15s;
+    }
+
+    .vtab:hover {
+      background: var(--bg-soft);
+    }
+
+    .vtab.on {
+      background: #fff;
+      border-color: var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .vtab .vt-en {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      color: var(--muted-2);
+    }
+
+    .vtab.on .vt-en {
+      color: var(--accent);
+    }
+
+    .vtab .vt-name {
+      display: block;
+      font-size: 15.5px;
+      font-weight: 800;
+      color: var(--muted);
+    }
+
+    .vtab.on .vt-name {
+      color: var(--ink);
+    }
+
+    .vtab .vt-bar {
+      display: block;
+      width: 18px;
+      height: 2px;
+      margin-top: 9px;
+      background: var(--line-2);
+      transition: width .18s, background .18s;
+    }
+
+    .vtab.on .vt-bar {
+      width: 34px;
+      background: var(--accent);
+    }
+
+    .vtabs-note {
+      margin-top: 16px;
+      padding-left: 18px;
+      font-size: 12px;
+      color: var(--muted-2);
+    }
+
+    .panel {
+      display: none;
+    }
+
+    .panel.is-active {
+      display: block;
+      animation: viewIn .3s ease both;
+    }
+
+    .panel-head {
+      margin-bottom: 32px;
+      max-width: 680px;
+    }
+
+    .panel-head .h2 {
+      margin: 14px 0 14px;
+    }
+
+    .panel-body {
+      display: grid;
+      grid-template-columns: 1.15fr .85fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    .value-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .value-item {
+      display: flex;
+      gap: 14px;
+      padding: 18px 22px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+    }
+
+    .value-item .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+      margin-top: 9px;
+    }
+
+    .value-item.g .dot {
+      background: var(--green);
+    }
+
+    .value-item h4 {
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--ink);
+      margin-bottom: 4px;
+    }
+
+    .value-item p {
+      font-size: 13.5px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .side-card {
+      padding: 26px 26px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      box-shadow: var(--shadow);
+    }
+
+    .side-card+.side-card {
+      margin-top: 20px;
+    }
+
+    .side-card h4 {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--muted-2);
+      margin-bottom: 16px;
+    }
+
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .step {
+      display: flex;
+      gap: 12px;
+    }
+
+    .step .n {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 2px;
+    }
+
+    .step .t {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .step .d {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    .offer {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .offer span {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink-2);
+      padding: 6px 13px;
+      border-radius: 8px;
+      background: var(--bg-soft);
+      border: 1px solid var(--line);
+    }
+
+    .note {
+      margin-top: 28px;
+      padding: 18px 22px;
+      border-radius: var(--r);
+      background: var(--bg-soft);
+      border: 1px solid var(--line);
+      font-size: 14px;
+      color: var(--ink-2);
+      line-height: 1.75;
+    }
+
+    .note b {
+      color: var(--ink);
+    }
+
+    .panel-cta {
+      margin-top: 28px;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    /* =====================================================================
+       产品：图 + 能力
+    ===================================================================== */
+    .figure {
+      max-width: 920px;
+      margin: 0 auto 44px;
+      padding: 28px 24px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      box-shadow: var(--shadow);
+    }
+
+    .figure svg {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .fig-cap {
+      margin-top: 18px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.7;
+    }
+
+    .caps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .cap {
+      padding: 26px 24px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      transition: transform .2s, box-shadow .2s;
+    }
+
+    .cap:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow);
+    }
+
+    .cap .ico {
+      width: 40px;
+      height: 40px;
+      border-radius: 11px;
+      margin-bottom: 16px;
+      background: var(--accent-soft);
+      border: 1px solid var(--accent-line);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .cap .ico svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .cap h3 {
+      font-size: 16.5px;
+      font-weight: 800;
+      color: var(--ink);
+      margin-bottom: 14px;
+    }
+
+    .cap ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    .cap li {
+      position: relative;
+      padding-left: 14px;
+      font-size: 13.5px;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    .cap li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 8px;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .note .offer span {
+      background: #fff;
+    }
+
+    .sec-note {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--muted-2);
+      margin-bottom: 14px;
+    }
+
+    /* =====================================================================
+       同行
+    ===================================================================== */
+    .join-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .join {
+      padding: 30px 26px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: transform .2s, box-shadow .2s;
+    }
+
+    .join:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 32px rgba(11, 18, 32, .08);
+    }
+
+    .join .lbl {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      color: var(--muted-2);
+    }
+
+    .join h3 {
+      font-size: 19px;
+      font-weight: 800;
+      color: var(--ink);
+    }
+
+    .join p {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.75;
+      flex: 1;
+    }
+
+    .join .btn {
+      align-self: flex-start;
+    }
+
+    .closing {
+      margin-top: 56px;
+      text-align: center;
+      font-size: clamp(20px, 2.6vw, 30px);
+      font-weight: 800;
+      color: var(--ink);
+      line-height: 1.6;
+      letter-spacing: -.3px;
+    }
+
+    .closing-en {
+      margin-top: 14px;
+      text-align: center;
+      font-size: 14px;
+      letter-spacing: 1.5px;
+      color: var(--muted);
+    }
+
+
+    .hero-only {
+      min-height: calc(100vh - var(--nav-h));
+      display: flex;
+      align-items: center;
+    }
+
+    .hero-belief {
+      font-size: clamp(15px, 2vw, 22px);
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .spec {
+      max-width: 840px;
+      margin: 0 auto;
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      background: #fff;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .spec-row {
+      display: flex;
+      gap: 20px;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .spec-row:last-child {
+      border-bottom: none;
+    }
+
+    .spec-k {
+      width: 88px;
+      flex-shrink: 0;
+      padding-top: 2px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .5px;
+      color: var(--muted-2);
+      text-transform: uppercase;
+    }
+
+    .spec-v {
+      font-size: 14.5px;
+      color: var(--ink);
+      line-height: 1.7;
+    }
+
+    .spec-v b {
+      color: var(--accent);
+    }
+
+    .spec-row.price {
+      background: var(--bg-soft);
+    }
+
+    .spec-row.price .spec-v {
+      font-weight: 700;
+    }
+
+    .order {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 28px;
+    }
+
+    .order .btn {
+      padding: 13px 30px;
+      font-size: 15px;
+    }
+
+    /* =====================================================================
+       价格主张 / FDE 驻场
+    ===================================================================== */
+    .price-title {
+      color: var(--accent);
+      font-size: clamp(28px, 4.2vw, 46px);
+      letter-spacing: -1px;
+    }
+
+    .fde-steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      max-width: 980px;
+      margin: 0 auto;
+    }
+
+    .fde-step {
+      padding: 26px 24px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      transition: transform .2s, box-shadow .2s;
+    }
+
+    .fde-step:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow);
+    }
+
+    .fde-step .n {
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      margin-bottom: 14px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .fde-step h4 {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--ink);
+      margin-bottom: 8px;
+    }
+
+    .fde-step p {
+      font-size: 13.5px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    /* 行业项目：部署图 */
+    .figure-sm {
+      max-width: 100%;
+      margin: 0 0 26px;
+      padding: 22px 18px;
+    }
+
+    .product-lead {
+      max-width: 720px;
+      margin: 0 auto 44px;
+      font-size: clamp(16px, 2vw, 20px);
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.85;
+    }
+
+    .entry {
+      padding: 28px 26px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: transform .2s, box-shadow .2s;
+    }
+
+    .entry:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow);
+    }
+
+    .entry h3 {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--ink);
+    }
+
+    .entry p {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.75;
+      flex: 1;
+    }
+
+    .entry .btn {
+      align-self: flex-start;
+    }
+
+    /* =====================================================================
+       Responsive
+    ===================================================================== */
+    @media (max-width:960px) {
+
+      .g3,
+      .g2,
+      .caps,
+      .fde-steps,
+      .join-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .sol-layout {
+        grid-template-columns: 1fr;
+        gap: 20px;
+      }
+
+      .vtabs {
+        position: static;
+        flex-direction: row;
+        gap: 8px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+      }
+
+      .vtab {
+        white-space: nowrap;
+        padding: 10px 16px;
+        border-color: var(--line-2);
+      }
+
+      .vtab .vt-bar {
+        display: none;
+      }
+
+      .vtabs-note {
+        display: none;
+      }
+
+      .panel-body {
+        grid-template-columns: 1fr;
+      }
+
+      .block {
+        padding: 64px 0;
+      }
+
+      .hero {
+        padding: 64px 0 56px;
+      }
+
+      .head-in {
+        gap: 10px;
+      }
+
+      .head-cta {
+        display: none;
+      }
+
+      .tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .tab {
+        padding: 8px 12px;
+        font-size: 14px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: .01ms !important;
+        transition-duration: .01ms !important;
+      }
+
+      .fu {
+        opacity: 1;
+        transform: none;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ===== 顶栏：整页切换 ===== -->
+  <header class="site-head" id="head">
+    <div class="container">
+      <div class="head-in">
+        <a class="brand" href="#home" data-goto="home" aria-label="Edge 首页">
+          <span class="logo-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"
+              stroke-linejoin="round">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+          </span>
+          <span>Edge</span>
+        </a>
+
+        <nav class="tabs" id="tabs" role="tablist" aria-label="主导航">
+          <button class="tab on" role="tab" id="tab-home" aria-controls="view-home" aria-selected="true"
+            data-tab="home">首页</button>
+          <button class="tab" role="tab" id="tab-product" aria-controls="view-product" aria-selected="false"
+            data-tab="product" tabindex="-1">产品</button>
+          <button class="tab" role="tab" id="tab-cases" aria-controls="view-cases" aria-selected="false"
+            data-tab="cases" tabindex="-1">案例</button>
+          <button class="tab" role="tab" id="tab-service" aria-controls="view-service" aria-selected="false"
+            data-tab="service" tabindex="-1">服务</button>
+          <button class="tab" role="tab" id="tab-ecosystem" aria-controls="view-ecosystem" aria-selected="false"
+            data-tab="ecosystem" tabindex="-1">生态</button>
+        </nav>
+
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+
+    <!-- ==================================================================
+         VIEW 1 · 理念
+    =================================================================== -->
+    <section class="view is-active" id="view-home" role="tabpanel" aria-labelledby="tab-home" tabindex="0">
+      <section class="hero hero-only">
+        <div class="container">
+          <h1 class="hero-title fu">Every Edge is <span class="ac">the Center.</span></h1>
+          <p class="hero-belief fu">我们交付的不只是算力，而是「拥有智能」这件事本身。</p>
+        </div>
+      </section>
+    </section>
+
+    <!-- ==================================================================
+         VIEW 2 · 产品
+    =================================================================== -->
+    <section class="view" id="view-product" role="tabpanel" aria-labelledby="tab-product" tabindex="0">
+      <section class="block">
+        <div class="container">
+          <p class="product-lead fu">算力硬件与 Edge 平台预装在同一台机器里——通电、联网，私有模型与 Agent 即可运行。</p>
+          <div class="figure fu">
+            <svg viewBox="0 0 900 360" role="img"
+              aria-label="Edge 一体机示意图：机箱内含 GPU、CPU、内存、存储与网络，右侧为预装的推理运行时、Edge 平台与 Agent 知识库">
+              <defs>
+                <marker id="arPre" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                  <path d="M0 0 L10 5 L0 10 z" fill="#8A93A3" />
+                </marker>
+              </defs>
+
+              <rect x="40" y="54" width="330" height="272" rx="16" fill="#FFFFFF" stroke="#D9DEE8" />
+              <text x="62" y="88" font-size="12" font-weight="700" fill="#2F5BF3" letter-spacing="1">EDGE 一体机</text>
+
+              <rect x="62" y="104" width="286" height="34" rx="8" fill="#F0F4FF" stroke="#C7D4FF" />
+              <text x="78" y="126" font-size="13" font-weight="700" fill="#0B1220">GPU · RTX PRO 6000 96GB</text>
+
+              <rect x="62" y="146" width="286" height="34" rx="8" fill="#F7F8FA" stroke="#E7EAF0" />
+              <text x="78" y="168" font-size="13" fill="#2B3342">CPU · 服务器级多核</text>
+
+              <rect x="62" y="188" width="286" height="34" rx="8" fill="#F7F8FA" stroke="#E7EAF0" />
+              <text x="78" y="210" font-size="13" fill="#2B3342">内存 · ECC 大容量</text>
+
+              <rect x="62" y="230" width="286" height="34" rx="8" fill="#F7F8FA" stroke="#E7EAF0" />
+              <text x="78" y="252" font-size="13" fill="#2B3342">存储 · NVMe 系统盘 + 数据盘</text>
+
+              <rect x="62" y="272" width="286" height="34" rx="8" fill="#F7F8FA" stroke="#E7EAF0" />
+              <text x="78" y="294" font-size="13" fill="#2B3342">网络 · 双口高速以太网</text>
+
+              <line x1="376" y1="190" x2="452" y2="190" stroke="#8A93A3" stroke-width="1.4" marker-end="url(#arPre)" />
+              <text x="414" y="176" font-size="10.5" fill="#8A93A3" text-anchor="middle">预装 · 开机即用</text>
+
+              <rect x="460" y="58" width="400" height="78" rx="12" fill="#F7F8FA" stroke="#E7EAF0" />
+              <text x="484" y="86" font-size="11.5" font-weight="700" fill="#2F5BF3" letter-spacing="1">RUNTIME</text>
+              <text x="484" y="112" font-size="15" font-weight="700" fill="#0B1220">推理运行时 · 高性能服务</text>
+
+              <rect x="460" y="152" width="400" height="78" rx="12" fill="#FFFFFF" stroke="#D9DEE8" />
+              <text x="484" y="180" font-size="11.5" font-weight="700" fill="#2F5BF3" letter-spacing="1">PLATFORM</text>
+              <text x="484" y="206" font-size="15" font-weight="700" fill="#0B1220">Edge 平台 · 调度与运维</text>
+
+              <rect x="460" y="246" width="400" height="78" rx="12" fill="#F7F8FA" stroke="#E7EAF0" />
+              <text x="484" y="274" font-size="11.5" font-weight="700" fill="#2F5BF3" letter-spacing="1">APPS</text>
+              <text x="484" y="300" font-size="15" font-weight="700" fill="#0B1220">Agent · 知识库 · 工具生态</text>
+            </svg>
+            <p class="fig-cap">硬件与软件在同一台机器里交付：不需要机房，也不需要另外组建一支运维团队。</p>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <!-- ==================================================================
+         VIEW 3 · 方案（按行业）
+    =================================================================== -->
+    <section class="view" id="view-cases" role="tabpanel" aria-labelledby="tab-cases" tabindex="0">
+      <section class="block">
+        <div class="container">
+          <div class="sol-layout">
+            <div>
+              <div class="vtabs" role="tablist" aria-label="行业切换" aria-orientation="vertical">
+                <button class="vtab on" role="tab" id="sub-energy" aria-controls="panel-energy" aria-selected="true"
+                  data-sub="energy">
+                  <span class="vt-en">Energy</span>
+                  <span class="vt-name">能源</span>
+                  <span class="vt-bar" aria-hidden="true"></span>
+                </button>
+                <button class="vtab" role="tab" id="sub-education" aria-controls="panel-education" aria-selected="false"
+                  data-sub="education" tabindex="-1">
+                  <span class="vt-en">Education</span>
+                  <span class="vt-name">教育</span>
+                  <span class="vt-bar" aria-hidden="true"></span>
+                </button>
+              </div>
+              <p class="vtabs-note">更多行业 · 共建中</p>
+            </div>
+
+            <div>
+              <!-- ===== 能源：绿电智算 ===== -->
+              <div class="panel is-active" id="panel-energy" role="tabpanel" aria-labelledby="sub-energy" tabindex="0">
+                <div class="panel-head">
+                  <span class="chip chip-green">案例 · 绿电智算</span>
+                  <h2 class="h2" style="font-size:clamp(22px,2.6vw,30px);">绿电智算</h2>
+                  <p class="lead">在光伏电站与园区现场就地部署 Edge 一体机：把富余绿电转成算力，让发电、用电与用智在同一处闭环——数据不出厂区。</p>
+                </div>
+
+                <div class="figure figure-sm fu">
+                  <svg viewBox="0 0 900 300" role="img"
+                    aria-label="绿电智算部署图：光伏阵列经并网计量接入现场 Edge 一体机，就地支撑功率预测、巡检与报表，并由 Edge 平台远程纳管">
+                    <defs>
+                      <marker id="arFlow1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6"
+                        orient="auto">
+                        <path d="M0 0 L10 5 L0 10 z" fill="#8A93A3" />
+                      </marker>
+                      <marker id="arUp1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5"
+                        orient="auto">
+                        <path d="M0 0 L10 5 L0 10 z" fill="#2F5BF3" />
+                      </marker>
+                    </defs>
+
+                    <rect x="30" y="96" width="160" height="80" rx="12" fill="#fff" stroke="#E7EAF0" />
+                    <text x="110" y="126" font-size="13.5" font-weight="700" fill="#0B1220"
+                      text-anchor="middle">光伏阵列</text>
+                    <text x="110" y="148" font-size="11.5" fill="#8A93A3" text-anchor="middle">屋顶 / 地面电站</text>
+
+                    <line x1="194" y1="136" x2="238" y2="136" stroke="#8A93A3" stroke-width="1.4"
+                      marker-end="url(#arFlow1)" />
+
+                    <rect x="244" y="96" width="160" height="80" rx="12" fill="#fff" stroke="#E7EAF0" />
+                    <text x="324" y="126" font-size="13.5" font-weight="700" fill="#0B1220"
+                      text-anchor="middle">并网与计量</text>
+                    <text x="324" y="148" font-size="11.5" fill="#8A93A3" text-anchor="middle">识别富余电力</text>
+
+                    <line x1="408" y1="136" x2="452" y2="136" stroke="#8A93A3" stroke-width="1.4"
+                      marker-end="url(#arFlow1)" />
+
+                    <rect x="458" y="70" width="190" height="132" rx="14" fill="#F0F4FF" stroke="#C7D4FF" />
+                    <text x="553" y="104" font-size="11.5" font-weight="700" fill="#2F5BF3" letter-spacing="1"
+                      text-anchor="middle">EDGE 一体机</text>
+                    <text x="553" y="132" font-size="14" font-weight="700" fill="#0B1220" text-anchor="middle">现场算力 ·
+                      就地消纳</text>
+                    <text x="553" y="156" font-size="11.5" fill="#5D6779" text-anchor="middle">模型与 Agent 常驻</text>
+                    <text x="553" y="178" font-size="11.5" fill="#5D6779" text-anchor="middle">数据不出厂区</text>
+
+                    <line x1="652" y1="136" x2="696" y2="136" stroke="#8A93A3" stroke-width="1.4"
+                      marker-end="url(#arFlow1)" />
+
+                    <rect x="702" y="90" width="170" height="92" rx="12" fill="#fff" stroke="#E7EAF0" />
+                    <text x="787" y="120" font-size="13.5" font-weight="700" fill="#0B1220"
+                      text-anchor="middle">现场智能</text>
+                    <text x="787" y="142" font-size="11.5" fill="#8A93A3" text-anchor="middle">功率预测 · 设备巡检</text>
+                    <text x="787" y="162" font-size="11.5" fill="#8A93A3" text-anchor="middle">运维报表 · 调度建议</text>
+
+                    <line x1="553" y1="206" x2="553" y2="242" stroke="#2F5BF3" stroke-opacity=".4" stroke-width="1.4"
+                      stroke-dasharray="5 5" marker-end="url(#arUp1)" />
+
+                    <rect x="393" y="246" width="320" height="48" rx="12" fill="#fff" stroke="#E7EAF0" />
+                    <text x="553" y="268" font-size="12.5" font-weight="700" fill="#0B1220" text-anchor="middle">Edge 平台
+                      · 远程调度与运维</text>
+                    <text x="553" y="286" font-size="11" fill="#8A93A3" text-anchor="middle">仅元数据上行</text>
+                  </svg>
+                </div>
+
+
+              </div>
+
+              <!-- ===== 教育：创业孵化器 ===== -->
+              <div class="panel" id="panel-education" role="tabpanel" aria-labelledby="sub-education" tabindex="0">
+                <div class="panel-head">
+                  <span class="chip">案例 · 创业孵化器</span>
+                  <h2 class="h2" style="font-size:clamp(22px,2.6vw,30px);">创业孵化器</h2>
+                  <p class="lead">在校园机房部署 Edge 一体机：给学生团队一套真实可用的算力与平台，从课程实训一路做到能上线、能拿出去见人的产品。</p>
+                </div>
+
+                <div class="figure figure-sm fu">
+                  <svg viewBox="0 0 900 300" role="img"
+                    aria-label="创业孵化器部署图：校园机房的 Edge 一体机支撑课程实训、学生团队项目与孵化中的创业项目，并通向产业与资本对接">
+                    <defs>
+                      <marker id="arFlow2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6"
+                        orient="auto">
+                        <path d="M0 0 L10 5 L0 10 z" fill="#8A93A3" />
+                      </marker>
+                      <marker id="arUp2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5"
+                        orient="auto">
+                        <path d="M0 0 L10 5 L0 10 z" fill="#2F5BF3" />
+                      </marker>
+                    </defs>
+
+                    <rect x="30" y="96" width="190" height="112" rx="14" fill="#F0F4FF" stroke="#C7D4FF" />
+                    <text x="125" y="130" font-size="11.5" font-weight="700" fill="#2F5BF3" letter-spacing="1"
+                      text-anchor="middle">EDGE 一体机</text>
+                    <text x="125" y="156" font-size="14" font-weight="700" fill="#0B1220" text-anchor="middle">校园机房 ·
+                      私有算力</text>
+                    <text x="125" y="180" font-size="11.5" fill="#5D6779" text-anchor="middle">教学与创业共用</text>
+
+                    <line x1="224" y1="152" x2="268" y2="152" stroke="#8A93A3" stroke-width="1.4"
+                      marker-end="url(#arFlow2)" />
+
+                    <rect x="274" y="52" width="300" height="64" rx="12" fill="#fff" stroke="#E7EAF0" />
+                    <text x="424" y="82" font-size="13.5" font-weight="700" fill="#0B1220"
+                      text-anchor="middle">课程与实训</text>
+                    <text x="424" y="104" font-size="11.5" fill="#8A93A3" text-anchor="middle">真实生产级环境，不是模拟器</text>
+
+                    <rect x="274" y="120" width="300" height="64" rx="12" fill="#fff" stroke="#E7EAF0" />
+                    <text x="424" y="150" font-size="13.5" font-weight="700" fill="#0B1220"
+                      text-anchor="middle">学生团队项目</text>
+                    <text x="424" y="172" font-size="11.5" fill="#8A93A3" text-anchor="middle">从选题、原型到上线</text>
+
+                    <rect x="274" y="188" width="300" height="64" rx="12" fill="#fff" stroke="#E7EAF0" />
+                    <text x="424" y="218" font-size="13.5" font-weight="700" fill="#0B1220"
+                      text-anchor="middle">孵化中的创业项目</text>
+                    <text x="424" y="240" font-size="11.5" fill="#8A93A3" text-anchor="middle">工程陪跑 · 产品打磨</text>
+
+                    <line x1="578" y1="152" x2="622" y2="152" stroke="#8A93A3" stroke-width="1.4"
+                      marker-end="url(#arFlow2)" />
+
+                    <rect x="628" y="110" width="244" height="84" rx="12" fill="#fff" stroke="#E7EAF0" />
+                    <text x="750" y="142" font-size="13.5" font-weight="700" fill="#0B1220"
+                      text-anchor="middle">产业场景与资本对接</text>
+                    <text x="750" y="164" font-size="11.5" fill="#8A93A3" text-anchor="middle">跑出来的团队，走向公司化</text>
+
+                    <line x1="125" y1="212" x2="125" y2="248" stroke="#2F5BF3" stroke-opacity=".4" stroke-width="1.4"
+                      stroke-dasharray="5 5" marker-end="url(#arUp2)" />
+
+                    <rect x="30" y="252" width="190" height="44" rx="12" fill="#fff" stroke="#E7EAF0" />
+                    <text x="125" y="272" font-size="12" font-weight="700" fill="#0B1220" text-anchor="middle">Edge 平台 ·
+                      运维与计量</text>
+                    <text x="125" y="288" font-size="11" fill="#8A93A3" text-anchor="middle">仅元数据上行</text>
+                  </svg>
+                </div>
+
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <!-- ==================================================================
+         VIEW · 服务（FDE 驻场）
+    =================================================================== -->
+    <section class="view" id="view-service" role="tabpanel" aria-labelledby="tab-service" tabindex="0">
+      <section class="block">
+        <div class="container">
+          <div class="block-head center fu">
+            <h2 class="h2">不是交一台设备，是交付价值。</h2>
+          </div>
+
+          <div class="fde-steps">
+            <article class="fde-step fu">
+              <div class="n">01</div>
+              <h4>进场 · 先定数据边界</h4>
+              <p>哪些数据可用、哪些绝不出网，先划清线再动手。</p>
+            </article>
+            <article class="fde-step fu">
+              <div class="n">02</div>
+              <h4>上手 · 模型适配与场景开发</h4>
+              <p>选适配业务的模型，做出第一个被真正使用的场景。</p>
+            </article>
+            <article class="fde-step fu">
+              <div class="n">03</div>
+              <h4>交岗 · 培训与移交</h4>
+              <p>教会你的人，留下可以继续长出来的底座。</p>
+            </article>
+          </div>
+
+          <p class="note" style="max-width:840px;margin:24px auto 0;">
+            FDE = Forward Deployed Engineer，驻场工程师。硬件谁都能买，把智能装进业务里的能力不能。
+          </p>
+        </div>
+      </section>
+    </section>
+
+    <!-- ==================================================================
+         VIEW · 生态（开发者入口）
+    =================================================================== -->
+    <section class="view" id="view-ecosystem" role="tabpanel" aria-labelledby="tab-ecosystem" tabindex="0">
+      <section class="block">
+        <div class="container">
+          <div class="block-head center fu">
+            <h2 class="h2">开发者 · 直接用起来</h2>
+            <p class="lead lead-center">模型服务、调度与接口已经就绪。</p>
+          </div>
+
+          <div style="text-align:center;">
+            <a class="btn btn-primary" href="/home" style="padding:13px 30px;font-size:15px;">进入技术平台</a>
+          </div>
+        </div>
+      </section>
+    </section>
+
+  </main>
+
+  <!-- ===== Footer ===== -->
+
+  <!-- ===================================================================
+       JS：仅切换已有 DOM 的 class 与属性，无 innerHTML 动态插入，无用户输入
+  =================================================================== -->
+  <script>
+    (function () {
+      var head = document.getElementById('head');
+      var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
+      var views = {};
+      tabs.forEach(function (t) { views[t.dataset.tab] = document.getElementById('view-' + t.dataset.tab); });
+
+      /* 顶栏滚动阴影 */
+      window.addEventListener('scroll', function () {
+        head.classList.toggle('sc', window.scrollY > 8);
+      }, { passive: true });
+
+      /* 视图内元素渐显 */
+      function reveal(view) {
+        var items = view.querySelectorAll('.fu');
+        for (var i = 0; i < items.length; i++) {
+          items[i].style.transitionDelay = (Math.min(i, 6) * 70) + 'ms';
+          items[i].classList.add('v');
+        }
+      }
+
+      function activate(name, pushHash) {
+        if (!views[name]) { name = 'home'; }
+
+        tabs.forEach(function (t) {
+          var on = t.dataset.tab === name;
+          t.classList.toggle('on', on);
+          t.setAttribute('aria-selected', String(on));
+          t.tabIndex = on ? 0 : -1;
+        });
+
+        Object.keys(views).forEach(function (k) {
+          views[k].classList.toggle('is-active', k === name);
+        });
+
+        reveal(views[name]);
+        window.scrollTo({ top: 0, behavior: 'auto' });
+        if (pushHash !== false) { history.replaceState(null, '', '#' + name); }
+      }
+
+      /* 主 Tab：点击 */
+      tabs.forEach(function (t) {
+        t.addEventListener('click', function () { activate(t.dataset.tab); });
+      });
+
+      /* 主 Tab：键盘（← → Home End） */
+      document.getElementById('tabs').addEventListener('keydown', function (e) {
+        var i = tabs.indexOf(document.activeElement);
+        if (i < 0) { return; }
+        var n = null;
+        if (e.key === 'ArrowRight') { n = (i + 1) % tabs.length; }
+        else if (e.key === 'ArrowLeft') { n = (i - 1 + tabs.length) % tabs.length; }
+        else if (e.key === 'Home') { n = 0; }
+        else if (e.key === 'End') { n = tabs.length - 1; }
+        if (n === null) { return; }
+        e.preventDefault();
+        tabs[n].focus();
+        activate(tabs[n].dataset.tab);
+      });
+
+      /* 页内跳转按钮 */
+      Array.prototype.slice.call(document.querySelectorAll('[data-goto]')).forEach(function (el) {
+        el.addEventListener('click', function (e) {
+          e.preventDefault();
+          activate(el.getAttribute('data-goto'));
+        });
+      });
+
+      /* 方案：纵向行业标签 */
+      var subs = Array.prototype.slice.call(document.querySelectorAll('.vtab'));
+      var panels = {};
+      subs.forEach(function (s) { panels[s.dataset.sub] = document.getElementById('panel-' + s.dataset.sub); });
+
+      function setSub(name) {
+        subs.forEach(function (s) {
+          var on = s.dataset.sub === name;
+          s.classList.toggle('on', on);
+          s.setAttribute('aria-selected', String(on));
+          s.tabIndex = on ? 0 : -1;
+        });
+        Object.keys(panels).forEach(function (k) {
+          panels[k].classList.toggle('is-active', k === name);
+        });
+      }
+      subs.forEach(function (s) {
+        s.addEventListener('click', function () { setSub(s.dataset.sub); });
+      });
+
+      /* 初始视图：支持 #idea / #solutions / #now / #join 直达 */
+      var initial = (location.hash || '').replace('#', '');
+      activate(views[initial] ? initial : 'home', false);
+
+      window.addEventListener('hashchange', function () {
+        var h = (location.hash || '').replace('#', '');
+        if (views[h] && !views[h].classList.contains('is-active')) { activate(h, false); }
+      });
+    })();
+  </script>
+
+</body>
+
+</html>
