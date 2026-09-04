@@ -1,5 +1,61 @@
 # 网络 代理 下载 管理
 
+## ⚖️ 容器网络方案 260904
+
+```text
+[诉求：容器互访 + 一处管理]
+  │
+  ├─▶ 方案A：全部并入一个共享 bridge（include + 顶层 networks.default）
+  │     → ✖ host 网络刚需服务进不来；
+  │        vllm 固定子网/固定 IP 被破坏；未显式命名卷前缀漂移（数据"丢"）；
+  │        .env 密钥需集中；安全平面摊平
+  ├─▶ 方案B：根目录 include 全家桶（base/hub/obs/infer/stacks）
+  │     → ✖ 生命周期耦合（vLLM 高频 down/up 误伤常驻栈）；
+  │        单 project 下 down 全停、误 down -v 全毁
+  └─▶ 采纳：维持现有多 project
+       跨栈互通 = external 网络按需挂第二网（prometheus→vllm_default 已是此模式）
+       一处管理 = 根目录编排脚本收口（不做结构合体）
+```
+
+**现状拓扑盘点**
+
+
+| 网络                 | 成员                                                                                                                                 | 平面语义                                           |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
+| host（宿主命名空间） | caddy-gateway · hub-postgres · hub-redis · hub-new-api · registry · registry-proxy · webhook-dingtalk · vllm-webui · kryptex | 网关/数据库/代理直连宿主，无 -p 映射、直绑宿主端口 |
+| obs_default          | prometheus · grafana · alertmanager · node-exporter · cadvisor · dcgm-exporter                                                  | 监控内部容器名互通                                 |
+| vllm_default         | vllm-qwen36（profiles 互斥其一）· prometheus（双网挂载）                                                                            | 固定子网 172.21.0.0/16                             |
+| portainer-net        | portainer · gitea · registry-ui · dind-platform · port-forward · auto-register                                                  | 管理平面（dind 二层环境）                          |
+| app_default          | solar-server                                                                                                                         | 独立业务                                           |
+
+端口分配（已核对，新服务先查此表）：grafana 3000 · gitea 3100/2222 · prometheus 9090 · alertmanager 9093（仅回环）· portainer 9443 · new-api 18080 · vllm 18000（仅回环）· webui 8081 · registry 5000 · registry-proxy 6000 · registry-ui 5100 · port-forward 5432/5433/8001-8004/3306 · hub-postgres 5434 · hub-redis 6379
+
+**host 网络是刚需**
+
+1. **mihomo TUN 策略路由劫持 docker 网桥 DNAT**：`ip rule 5270 lookup 52` 会把目标 172.x 容器 IP 的流量路由进物理网卡黑洞 → 网桥容器入/出站异常。host 模式直连 local 递送可规避 → 波及 caddy/base、registry、webhook-dingtalk、open-webui
+2. **透明代理只对宿主进程生效，容器网桥出网受限** → new-api 访问外部付费 API、registry-proxy 回源 Docker Hub 必须 host + 显式代理（`HTTP_PROXY=http://127.0.0.1:7890`）
+3. **host 平面零配置直连**：new-api ↔ vLLM（127.0.0.1:18000）↔ WebUI 三角互通全靠 host 网络；hub-new-api 的 `SQL_DSN=...@127.0.0.1:5434`、`REDIS=...127.0.0.1:6379`
+
+→ 结论：这批服务**进不了任何共享 bridge**，迁过去外网即断、直连即断。所谓"共享网络"只对 bridge 类生效，include 的收益先天打折。
+
+**为什么 include 全家桶 + 顶层重定义 default 不可行**
+
+
+| # | 冲突点                                    | 现状依据                                                                                                   | 后果                                                                                                                                                  |
+| - | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1 | 顶层重定义`default` ↔ 子栈自定义 default | vllm 显式`default: name: vllm_default + ipam 172.21.0.0/16`，服务固定 `ipv4_address: 172.21.0.2`           | 两个 default 无法共存；固定 IP/子网被破坏 → prometheus.yml 抓`172.21.0.2:8000` 失效，obs 已踩过的「监控目标不可达」复发                              |
+| 2 | 未显式`name` 的卷前缀漂移                 | `openwebui_data`（WebUI 用户库）、`vllm_cache`（torch.compile 缓存，丢了重编译很慢）、base `caddy_data` 等 | include 后变`<根project>_xxx` 新卷，旧数据孤儿化、服务像首次启动。已 `name:`/`external: true` 的（monitoring_*、devops_*、hub_*、portainer_data）安全 |
+| 3 | 各栈`.env` 插值失效                       | obs/.env、hub/.env 的`${VAR}` 仅各自目录生效；`SQL_DSN` 含明文密码                                         | 需集中到根 .env；edge 是 git 仓库，合并且未 .gitignore 则密钥入库                                                                                     |
+| 4 | 生命周期耦合                              | hub 注释自述设计理由：vLLM 切模型是高频 down/up（互斥 profiles），同 compose project 会误伤网关            | 单 project 下 down 全停；误`down -v` 全毁；vllm profiles 与主 project 过滤叠加语义混乱                                                                |
+| 5 | 安全隔离归零                              | gitea（仓库凭据）/ registry（镜像）/ hub-postgres（业务库）/ vllm 当前互不可达                             | 全互通后任一被攻破即可横向扫库                                                                                                                        |
+
+**include 的正确使用边界**
+
+- ✅ 适合 include：同生命周期（一起启停）、纯 bridge、无固定 IP/自定义子网、卷已显式 name/external、无独立密钥 .env → 例：dashboard/grafana + monitor/prometheus 这类纯 obs 系聚合（本讨论最初示例即此形态，可行）
+- ❌ 不适合：host 网络服务、自定义子网 + 固定 IP、有状态卷未显式命名、高频启停/互斥 profiles、密钥独立 .env
+- 前置条件：docker compose ≥ v2.20 才支持 include
+
+
 ## 🔑 统一服务密码 260903
 
 > 场景：自建服务多、账号密码散乱易忘 → 统一为同一强密码。三服务改密机制各异，先定密码再过策略关。
