@@ -153,7 +153,7 @@ services:
       - --model=/models/Qwen3.6-35B-A3B-AWQ # 模型权重路径
       - --tensor-parallel-size=2 # 双卡张量并行
       - --max-model-len=65536 # 最大上下文 64K(FP8 KV + 10/40 层全注意力, 每卡 KV 容量 ~115 万 token, 64K 余量充足)
-      - --gpu-memory-utilization=0.90 # 显存利用率
+      - --gpu-memory-utilization=0.80 # 显存利用率(0.90→0.80: 预留 ~3.5GiB/卡，需 2.6GiB)
       - --dtype=auto # 自动匹配量化格式(AWQ)
       - --served-model-name=qwen3.6-35b # 对外模型名
       - --enable-prefix-caching # 前缀缓存
@@ -171,7 +171,7 @@ services:
       - '--default-chat-template-kwargs={"enable_thinking": true}'
       # 多模态(图像+视频): 模型自带 preprocessor_config, vLLM 自动启用;
 
-  # ---------- Open WebUI ----------
+      # ---------- Open WebUI ----------
   open-webui:
     image: ghcr.io/open-webui/open-webui:v0.10.2
     container_name: vllm-webui
