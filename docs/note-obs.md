@@ -1,5 +1,87 @@
 # obs 监控
 
+## 🚨 Grafana 数据 404 260912
+
+> 现象：`/d/Oxed_c6Wz/dcgm-exporter-dashboard?...&var-gpu=$__all` 打不开，且所有看板的面板都挂红角标。
+
+```text
+[现象：一个看板打不开 + 所有看板红角标]
+  │
+  ├─▶ 看板被删 / 迁移时丢了
+  │     → ✖ 查 API /api/dashboards/uid/Oxed_c6Wz：在库，
+  │       title "DCGM Exporter Dashboard"、folder General
+  ├─▶ URL 上模板变量 var-instance / var-gpu=$__all 不对
+  │     → ✖ 变量只决定取哪部分数据，解释不了"全部"看板都红
+  └─▶ 面板查询本身 404
+        → ✔ 所有看板共用一个数据源，只有它能让"全部"同时失败
+```
+
+**排除两头：看板在库，采集端也健康**
+
+- 看板在库 ≠ 在 provisioning 目录：它**不在** `obs/dashboards/`（目录里只有 `overview.json`），是 UI 导入存进 `grafana.db` 的——目录里没有不等于丢了，要用 API 确认。
+- Prometheus 侧健康：5 个 target 全 `up`，GPU 在采（2 卡 77℃）→ 断的是取数地址，不是采集端。
+
+**决定性证据**（Grafana 容器内实测）：
+
+
+| 请求                                                | 结果    |
+| --------------------------------------------------- | ------- |
+| `http://prometheus:9090/api/v1/query?query=up`      | **404** |
+| `http://prometheus:9090/prom/api/v1/query?query=up` | 200     |
+
+**根因**：Prometheus 启了 `--web.route-prefix=/prom`，API 全挂到前缀下；数据源地址少了这一段，每次查询都打在不存在的根路径上。
+
+```text
+面板 → datasource proxy → http://prometheus:9090 + /api/v1/query
+                                 ↑ 少 /prom → 404
+实际路由：--web.route-prefix=/prom → /prom/api/v1/query
+```
+
+**修复**：`obs/grafana-datasource.yml` 的 `url` 补成 `http://prometheus:9090/prom`，并显式固定 uid `PBFA97CFB590B2093`——该看板 11 个面板、24 处数据源引用全指向这个 uid；provisioning 不写 `uid` 时 Grafana 自生成，数据源一旦换 uid 这 24 处引用集体失效，而 UI 导入的看板改 provisioning 文件也救不回来。
+
+**认知**
+
+- `--web.route-prefix` 改的是 **API 挂载点**（`/api/v1/*`、`/-/reload` 全移到前缀下），`--web.external-url` 只改页面里生成的链接——两者不等价。加了前缀，所有消费方（数据源、脚本、`curl`）都要跟着改。
+- 排障顺序：先在 Grafana 容器里 `curl` 数据源探针，再回头怀疑看板——红角标只是表象。
+
+---
+
+
+> 现象：取数修好后，日志仍持续刷 `ws://<公网IP>:2030/grafana/api/live/ws` 404。两个入口都能开 Grafana——公网 2030 直连宿主 3000、2029 走 Caddy 网关——从 2029 进的页面却在连 2030。
+
+```text
+[诉求：只留一个对外入口]
+  │
+  ├─▶ 双入口保留，root_url 改相对路径 / 去掉端口
+  │     → ✖ root_url 必须是完整 URL；去掉端口后页面生成的
+  │       绝对链接仍会落到另一个入口，分叉并没解决
+  ├─▶ 统一到 2029 网关，root_url 指向 2029
+  │     → ✔ 页面所有绝对链接（含 Live WS）统一到网关
+  └─▶ 2030 也接进网关，网关内再转一层
+        → ✖ 云侧端口映射直通宿主 3000，网关插不进这条链路；徒增一跳
+```
+
+**为什么双入口必然出事**
+
+```text
+前端拼 Live 地址（12.1.1 源码）
+  liveUrl = `${appUrl.replace(/^http/,'ws')}/api/live/ws`
+                      ↑ appUrl 取自 root_url，改造前 = http://<公网IP>:2030/grafana/
+```
+
+- `serve_from_sub_path=true` 只保证 `/grafana/...` 路由命中（相对 301 让同 host 各端口都能把页面打开）；
+- 页面里生成的**绝对**地址（Live WS、邮件/告警链接、API 回跳）一律由 `root_url` 决定。root_url 指 2030，从 2029 进的页面就必然跨端口去连 2030 的 WS → 404。
+
+**实施与验证**
+
+- `obs/.env` 的 `GF_SERVER_ROOT_URL` 改为 `http://<公网IP>:2029/grafana/`；改完必须 `docker compose up -d grafana` **重建**容器——`docker restart` 不重读 `.env`。
+- 2029 页面的 `appUrl` = `...2029/grafana/`；从 2030 进去 `appUrl` 同样指 2029 → 老书签自动收敛（软统一），不必等云侧删映射。
+- Live 端点 `...2029/grafana/api/live/ws` 握手返回 401（未带会话的正常响应），不再是 404。
+
+**卡点**：`appUrl` 是页面加载时烘焙进 JS 的，旧标签页不硬刷新会继续按旧地址重试——重建后仍观测到 21 次这类 404；历史握手成功 0 次，Live 推送本就一直没生效，面板取数走 HTTP 不受影响。
+
+---
+
 ## 🐛 监控目标 vllm 不可达 260901
 
 vLLM 服务全程健康，告警来自「采集链路」——vLLM 端口安全收紧后 prometheus 抓不到，改用容器网络直连修复，全程未重启 vLLM。

@@ -9,7 +9,8 @@
 - `prometheus.yml`：Prometheus 抓取目标与 Alertmanager 配置。
 - `alert_rules.yml`：Prometheus 告警规则（GPU + vLLM 组）。
 - `alertmanager.yml`：告警路由与通知（webhook）配置。
-- `grafana-datasource.yml`：Grafana 自动数据源配置（uid `PBFA97CFB590B2093`，指向 `prometheus:9090`）。
+- `grafana-datasource.yml`：Grafana 自动数据源配置（uid `PBFA97CFB590B2093`，指向 `prometheus:9090/prom`）。
+  > 必须带 `/prom` 前缀：Prometheus 启动参数含 `--web.route-prefix=/prom`，所有路由（含 `/api/v1/*`）都挂在 `/prom` 下；缺前缀会返回 **404**，表现为「所有 Grafana 面板红色错误角标」。改此文件后需 `docker restart grafana`（数据源仅在启动时 provisioning）。
 - `dashboards.yml` + `dashboards/`：Grafana 面板 provisioning，改动 **30s 内自动热加载**，无需重启。
 - `template/`：钉钉告警消息模板（`default.tmpl`），只读挂载，**改后需 `docker restart webhook-dingtalk`** 才生效。
 

@@ -5,6 +5,10 @@ datasources:
   - name: Prometheus
     type: prometheus
     access: proxy
-    url: http://prometheus:9090
+    # 必须带 /prom 前缀：Prometheus 启动参数 --web.route-prefix=/prom 会把所有路由（含 /api/v1/*）
+    # 挂到 /prom 下，缺前缀会 404 → Grafana 所有面板报红色错误角标。
+    url: http://prometheus:9090/prom
+    # 固定 uid，保证已导入面板（如 dcgm-exporter-dashboard）内的数据源引用不失效。
+    uid: PBFA97CFB590B2093
     isDefault: true
     editable: true
