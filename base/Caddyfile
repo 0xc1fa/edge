@@ -62,6 +62,59 @@
 		reverse_proxy 127.0.0.1:18080
 	}
 
+	# ---- Incus 容器管理面板（等同宿主 root，双重限制：来源 IP + 口令）----
+	# 反向代理自身向上游出示客户端证书（TLS Client Auth），故浏览器无需安装证书。
+	#  upstream 证书为自签，故用 Incus 服务端证书做信任锚，而非关闭校验。
+	# 快捷入口 /incus → /ui/，仅对局域网白名单生效（非白名单在下方统一 404）
+	@incus_root {
+		path /incus
+		remote_ip 10.8.0.0/24 172.16.0.0/12 192.168.0.0/16 127.0.0.1
+		not remote_ip 172.17.0.0/16 172.18.0.0/16 172.19.0.0/16 172.20.0.0/16 172.21.0.0/16 172.22.0.0/16 172.23.0.0/16
+	}
+	redir @incus_root /ui/ permanent
+
+	@incus_admin {
+		path /ui /ui/* /1.0 /1.0/*
+		# 内网段 + 本机（私有地址，公网到不了）
+		remote_ip 10.8.0.0/24 172.16.0.0/12 192.168.0.0/16 127.0.0.1
+		# 但必须排除 Docker 网段，否则 22 个容器(含 privileged dind)都能访问这个 root 级面板
+		not remote_ip 172.17.0.0/16 172.18.0.0/16 172.19.0.0/16 172.20.0.0/16 172.21.0.0/16 172.22.0.0/16 172.23.0.0/16
+	}
+	# 全量访问日志（临时诊断用）：记录所有来源、所有路径，含被拒的 404
+	log {
+		output stdout
+		format console
+	}
+
+	handle @incus_admin {
+		# 禁止缓存：Incus UI 只发 Last-Modified，浏览器会复用旧入口壳子，
+		# 一旦资源被拦(如来源 IP 不在白名单)就报 "Failed to fetch dynamically imported module"
+		header {
+			Cache-Control "no-store, must-revalidate"
+			-Last-Modified
+			-Etag
+		}
+		basic_auth {
+			incus $2a$14$S1reX7EoZ6ouXby7gWS09ueMfO3F4YfGCdk3XgUuFviBR/6OqHp/K
+		}
+		# 用宿主机实体 IP，不能用 127.0.0.1：Incus 只监听 core.https_address
+		reverse_proxy https://10.8.0.8:8443 {
+			transport http {
+				# Incus 自签证书 SAN 只含 127.0.0.1,::1，故用服务端证书做信任锚(保链式校验)，
+				# 并把校验名对齐到 SAN；这样可以跳过主机名校验而不必 tls_insecure_skip_verify
+				tls_trust_pool file /etc/caddy/incus/server.crt
+				tls_server_name 127.0.0.1
+				tls_client_auth /etc/caddy/incus/client.crt /etc/caddy/incus/client.key
+			}
+		}
+	}
+
+	# 非白名单来源访问面板路径：明确 404，避免静默落到兜底导航页造成"页面不对"的误判
+	@incus_path path /incus /ui /ui/* /1.0 /1.0/*
+	handle @incus_path {
+		respond 404
+	}
+
 	# ---- /home → 开发者内部导航（原 index.html）----
 	handle /home {
 		root * /srv/www
@@ -74,5 +127,51 @@
 		root * /srv/www
 		rewrite * /landing.html
 		file_server
+	}
+}
+
+# =============================================================================
+# Incus 容器管理面板 —— 专用端口 10.8.0.8:1001
+# 不走路径分发：根路径直出面板，去掉 /incus → /ui/ 这层路径匹配，少一个出错环节。
+# 来源限制仍在（内网可进 / 公网与容器不可进），浏览器仍需一次口令。
+# =============================================================================
+http://:1001 {
+	header {
+		Cache-Control "no-store, must-revalidate"
+		-Last-Modified
+		-Etag
+	}
+
+	log {
+		output stdout
+		format console
+	}
+
+	# 内网段放行，显式排除 Docker 网段（172.17~172.23）
+	@internal {
+		remote_ip 10.8.0.0/24 172.16.0.0/12 192.168.0.0/16 127.0.0.1
+		not remote_ip 172.17.0.0/16 172.18.0.0/16 172.19.0.0/16 172.20.0.0/16 172.21.0.0/16 172.22.0.0/16 172.23.0.0/16
+	}
+
+	handle @internal {
+		basic_auth {
+			incus $2a$14$S1reX7EoZ6ouXby7gWS09ueMfO3F4YfGCdk3XgUuFviBR/6OqHp/K
+		}
+		# 根路径直接进面板
+		@root path /
+		redir @root /ui/ permanent
+
+		reverse_proxy https://10.8.0.8:8443 {
+			transport http {
+				tls_trust_pool file /etc/caddy/incus/server.crt
+				tls_server_name 127.0.0.1
+				tls_client_auth /etc/caddy/incus/client.crt /etc/caddy/incus/client.key
+			}
+		}
+	}
+
+	# 非内网来源：直接 404，不做任何提示
+	handle {
+		respond 404
 	}
 }

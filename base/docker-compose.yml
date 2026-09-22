@@ -25,6 +25,7 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./www:/srv/www:ro       # 服务导航首页
+      - ./incus-proxy:/etc/caddy/incus:ro  # 反代向 Incus 出示的客户端证书 + 服务端信任锚
       - caddy_data:/data        # 自动 HTTPS 证书存储（将来有域名时用）
       - caddy_config:/config
     environment:

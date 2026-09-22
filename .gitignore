@@ -34,3 +34,5 @@ obs/dingtalk.yml
 
 # ---- 资源枢纽 hub：数据库密码与会话密钥 ----
 hub/.env
+
+base/incus-proxy
