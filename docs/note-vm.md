@@ -1,5 +1,54 @@
 # VM
 
+## 🎛️ 租户 GPU 管理 260929
+
+> 把 `tenant-ctl.sh gpu` 从「能挂能摘」补成 **看得见 / 看得准 / 按需摘**：宿主全景带温度功耗归属、按卡序号热插拔、指标实时刷新
+
+**阶段主线**
+
+```text
+[① 视图：先"看得见"]     ┌ list 加 GPU 列（该租户占用的宿主卡序号）
+                         └ gpu 全景表：IDX / 型号 / PCI / 显存 / 利用率 / HOLDER
+                           [顾虑：全景 ≠ 分配 → 补 free / assigned 过滤]
+        │
+        ▼
+[② 门控：按需挂/摘]      ┌ gpu <t> on [卡序号...] / off [卡序号...]
+                         └ --now 强制重启 / --no-restart 只写配置
+                           [顾虑：物理卡变更要不要重启？→ 实测不用]
+        │
+        ▼
+[③ 指标：温度/功耗/风扇] ┌ TEMP / POWER / FAN 三列进宿主全景
+                         └ gpu [<t>] watch [秒] 实时刷新
+        │
+        ▼
+[④ 语义澄清]            ┌ HOLDER 的 "-" → "未分配" + 统计行
+                         └ gpu free / gpu assigned / gpu <实例> 三视角分开
+```
+
+**① 视图**：`list` 追加 `GPU` 列，值是该租户占用的**宿主卡序号**（`0,1`；通配挂载 `all`；无卡 `-`）。`gpu`（不带实例）= **宿主物理卡全景**——型号 / PCI / 显存 / 利用率 / 温度 / 功耗 / 风扇 + `HOLDER` 归属。
+
+**② 门控**：`on` / `off` 都支持**指定卡序号**（`gpu <t> off 1` 只摘 1 号卡，不带序号=全部）。`on` **按 PCI 匹配而非设备名**，重复执行幂等。新增两个选项：
+
+
+| 选项           | 行为                                                                             |
+| -------------- | -------------------------------------------------------------------------------- |
+| 默认（auto）   | 比对「期望卡数 vs 租户内`nvidia-smi -L` 可见卡数」：一致→不重启，不一致→才重启 |
+| `--no-restart` | 只写配置，下次启动生效                                                           |
+| `--now`        | 无条件重启                                                                       |
+
+**③ 指标**：`temperature.gpu` / `power.draw` / `fan.speed` 进宿主全景；租户侧视图带 `temperature.gpu` / `power.draw`；`watch` 循环刷新（默认 2s）。
+
+**④ 语义澄清**：`HOLDER` 为 `-` 时改为 **`未分配`**，并加统计行「宿主物理卡 N 张：已分配 X，未分配 Y」；新增 `gpu free` / `gpu assigned` 过滤。
+
+**坑**
+
+1. **「全景」被误读成「分配视图」**：`gpu` 列的是宿主**所有物理卡**，摘掉一张后仍是两行（卡还在机器里），使用者当场以为没摘成功 → 真正归属在 `HOLDER` 列（`未分配` / `tenant01(gpu1)`），判据是**实例配置 + 租户内设备节点**，不是宿主 `nvidia-smi` 的行数。
+2. **`nvidia-smi --query-compute-apps` 会卡住**：直接跑挂死→ 必须 `timeout 8 nvidia-smi --query-compute-apps=gpu_bus_id,pid,process_name,used_memory --format=csv`。
+3. **物理卡「仍在位」≠「未摘除」**：`nvidia-smi` 是宿主视角，卡不会因摘除而从宿主枚举里消失。
+4. **官方口径**（`reference/devices_gpu`）：`gputype=physical` **仅容器支持热插拔**（VM 不支持）；`mig` **同样不支持热插拔**。physical 可用设备选项：`pci` / `id`（DRM 卡号）/ `vendorid` / `productid` / `uid` / `gid` / `mode`（后三个仅容器）。
+
+---
+
 ## 🚪 Incus 部署 260922
 
 > 从装到租户容器跑通、出网收口、SSH 交付、管理面板
@@ -222,7 +271,7 @@ tenant-ctl.sh apply   [t]                 幂等施加网络规则（内部调 i
 tenant-ctl.sh start|stop|restart|shell|ssh|quota|destroy
 ```
 
-要点：`gpu on` **按 PCI 匹配而非按设备名**，所以重复执行幂等、不会把同一张卡挂两遍；首次会自动设 `nvidia.runtime=true` 并重启容器（后续增删卡**零重启**）；`apply` 只是**编排**独立脚本，systemd 自启不受 CLI 改动影响。
+要点：`gpu on` **按 PCI 匹配而非按设备名**，所以重复执行幂等、不会把同一张卡挂两遍；首次会自动设 `nvidia.runtime=true` 并重启容器（后续增删卡**零重启**）；`apply` 只是**编排**独立脚本，systemd 自启不受 CLI 改动影响。**（260929 起该命令已扩展：全景带温度/功耗/风扇与归属、`on|off` 支持指定卡序号与 `--now|--no-restart`，见上节）**
 
 **交付口径**（给租户的解释，不涉任何宿主内部信息）
 
@@ -235,6 +284,8 @@ tenant-ctl.sh start|stop|restart|shell|ssh|quota|destroy
 ## ⚖️ 多租户强隔离方案 260921
 
 > 把宿主机切一部分算力（CPU / 内存 / 磁盘 / GPU）分给**外部人员**训练，现有业务（vLLM 推理、算力共享、监控、docker 栈）不受扰动，租户**看不见也摸不到**宿主与其他租户。
+>
+> 在 ubantu 创建新的用户并限制他的所见范围是否可行
 
 ```text
 [业务画面]
