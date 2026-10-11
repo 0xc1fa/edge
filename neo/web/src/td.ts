@@ -32,6 +32,8 @@ export { default as Descriptions } from 'tdesign-react/es/descriptions';
 export { default as Divider } from 'tdesign-react/es/divider';
 export { default as Drawer } from 'tdesign-react/es/drawer';
 export { default as Form } from 'tdesign-react/es/form';
+export { default as Skeleton } from 'tdesign-react/es/skeleton';
+export { default as Loading } from 'tdesign-react/es/loading';
 export { default as Space } from 'tdesign-react/es/space';
 export { default as Statistic } from 'tdesign-react/es/statistic';
 export { default as Steps } from 'tdesign-react/es/steps';

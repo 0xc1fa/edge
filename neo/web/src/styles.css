@@ -1,15 +1,38 @@
+/* ============================================================
+   日新坊控制台 · 样式
+   这里只做三件事：设计 token、页面布局、产品卡这类强定制块。
+   组件细节（按钮 / 输入 / 表格 / 标签 / 描述列表）一律交给 TDesign。
+   ============================================================ */
+
 :root {
   --bg: #f5f7fa;
   --panel: #ffffff;
   --panel-2: #f7f9fc;
   --line: #e3e6eb;
   --text: #16181d;
+  --text-2: #3a4553;
   --muted: #5f6a7a;
   --accent: #006eff;
   --accent-weak: rgba(0, 110, 255, 0.06);
   --ok: #00a854;
   --warn: #e3730b;
   --bad: #d93026;
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --focus: 0 0 0 3px rgba(0, 110, 255, 0.14);
+
+  /* 页面容器宽度：售卖页与控制台共用一档，切换页面时内容不会左右挪 */
+  --wrap: 1200px;
+
+  /* 间距步长：全站只用这八档，避免 13px / 18px 这类随手值把节奏打散 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 40px;
+  --sp-8: 48px;
+
   color-scheme: light;
 }
 
@@ -24,6 +47,12 @@ body {
   font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 14px;
   line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  text-decoration: none;
 }
 
 .center {
@@ -61,7 +90,8 @@ body {
   padding: 32px;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 6px;
+  box-shadow: var(--shadow-1);
 }
 
 .login-title {
@@ -75,6 +105,8 @@ body {
   font-size: 13px;
 }
 
+/* 「标签 + 控件」这个轻量组合 TDesign 没有，自己留一条；
+   控件高度、hover、focus 仍由框架负责。 */
 .field {
   display: block;
   margin-bottom: 16px;
@@ -83,8 +115,14 @@ body {
 .field span {
   display: block;
   margin-bottom: 6px;
-  color: var(--muted);
-  font-size: 12px;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.field .t-input__wrap,
+.field .t-textarea__inner {
+  width: 100%;
 }
 
 .form-error {
@@ -112,19 +150,22 @@ body {
 /* ---------------------------------------------------------- 布局 */
 
 .app {
-  max-width: 1240px;
+  max-width: var(--wrap);
   margin: 0 auto;
-  padding: 20px 24px 48px;
+  padding: var(--sp-4) var(--sp-5) var(--sp-8);
 }
 
+/* 页头与 .app 用同一套宽度与内边距，两边的品牌标识和内容才会对齐 */
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--line);
+  gap: var(--sp-4);
   flex-wrap: wrap;
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: var(--sp-5) var(--sp-5) var(--sp-3);
+  border-bottom: 1px solid var(--line);
 }
 
 .brand {
@@ -151,9 +192,9 @@ body {
 }
 
 .banner {
-  margin-top: 16px;
+  margin-top: var(--sp-4);
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--td-radius-medium);
   font-size: 13px;
 }
 
@@ -169,28 +210,74 @@ body {
   color: var(--warn);
 }
 
+/* 批准后给出的建议命令：是一块实体面板，不是错误提示 */
+.banner.cmd {
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.cmd-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.cmd-body {
+  margin: 0 0 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+}
+
+/* 控制台工作区：概览与面板之间统一 16px 节奏，不再各自带 margin */
+.workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .cards {
-  margin: 22px 0;
+  margin: 0;
 }
 
 .panel {
   padding: 18px;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 6px;
   box-shadow: var(--shadow-1);
 }
 
 .panel-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
   margin-bottom: 12px;
 }
 
 .panel-head h2 {
   margin: 0;
   font-size: 15px;
+}
+
+/* 面板头右侧：状态标签 + 刷新时间 + 刷新按钮，垂直居中对齐 */
+.panel-head-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .cell-strong {
@@ -201,6 +288,7 @@ body {
   display: flex;
   gap: 6px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .stack {
@@ -209,6 +297,8 @@ body {
   gap: 4px;
   min-width: 120px;
 }
+
+/* ---------------- 用量条 ---------------- */
 
 .bar {
   height: 6px;
@@ -234,6 +324,8 @@ body {
   background: var(--bad);
 }
 
+/* ---------------- 抽屉 ---------------- */
+
 .drawer-body {
   flex: 1;
   overflow-y: auto;
@@ -241,40 +333,14 @@ body {
 }
 
 .drawer-body h3 {
-  margin: 22px 0 10px;
-  color: var(--muted);
-  font-size: 12px;
+  margin: 20px 0 8px;
+  color: var(--text);
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .drawer-body h3:first-child {
   margin-top: 0;
-}
-
-.kv-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 8px 16px;
-}
-
-.kv {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 6px 0;
-  border-bottom: 1px dashed rgba(227, 230, 235, 0.9);
-}
-
-.kv-k {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.kv-v {
-  font-size: 13px;
-  text-align: right;
 }
 
 .list {
@@ -312,58 +378,9 @@ body {
   font-size: 12px;
 }
 
-@media (max-width: 900px) {
-  .grid td:nth-child(n + 5),
-  .grid th:nth-child(n + 5) {
-    display: none;
-  }
-
-  .charts {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ============================================================
-   设计基线
-   对齐腾讯云控制台的做法：控件高度收敛（32/36/40 三档）、
-   圆角偏小（4px 控件 / 6px 容器）、描边 + 极浅阴影而非重投影，
-   以及明确的 hover / focus / disabled 三态反馈。
-   “不专业”通常就差在这几处：控件高低不齐、hover 没反应、disabled 还能点。
-   ============================================================ */
-
-:root {
-  --line-strong: #dcdfe6;
-  --hover-line: #b8bfc9;
-  --text-2: #3a4553;
-  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.04);
-  --shadow-2: 0 6px 16px rgba(16, 24, 40, 0.08);
-  --focus: 0 0 0 3px rgba(0, 110, 255, 0.14);
-}
-
-body {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-a {
-  text-decoration: none;
-}
-
-/* ---------------- 表单控件 ---------------- */
-
-.field span {
-  color: var(--text-2);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-/* ---------------- 容器与表格 ---------------- */
-
-.panel,
-.card,
-.login-card {
-  border-radius: 6px;
-  box-shadow: var(--shadow-1);
+/* 折线颜色跟着品牌主色走，不在这里硬编码一个色值 */
+.spark-line {
+  stroke: var(--accent);
 }
 
 /* ============================================================
@@ -388,70 +405,167 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  max-width: 1200px;
+  max-width: var(--wrap);
   height: 100%;
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 var(--sp-5);
+}
+
+/* 滚动后才浮起来：静止时只有一条边线，避免首页顶部出现两道横线 */
+.tc-nav.is-scrolled {
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.06);
 }
 
 .tc-nav-links {
   display: flex;
   align-items: center;
-  gap: 22px;
+  gap: var(--sp-5);
 }
 
-.tc-nav-links a {
-  padding: 4px 0;
-  border-bottom: 2px solid transparent;
+/* 导航里的链接用 Button 渲染，但视觉上要和一个普通链接一样：
+   去掉框架给的内边距，字号也压到 13px，才不会和相邻的文字两档字号 */
+.t-button.t-nav-link {
+  padding-left: 0;
+  padding-right: 0;
   color: var(--text-2);
   font-size: 13px;
 }
 
-.tc-nav-links a:hover {
-  border-bottom-color: var(--accent);
+.t-button.t-nav-link:hover,
+.t-button.t-nav-link:focus-visible {
   color: var(--accent);
+  background-color: transparent;
+}
+
+/* ---------------- Hero ---------------- */
+
+.hero {
+  background:
+    radial-gradient(1100px 300px at 12% -60%, rgba(0, 110, 255, 0.09), transparent 62%),
+    linear-gradient(180deg, #f6f9ff 0%, #ffffff 100%);
+  border-bottom: 1px solid var(--line);
+}
+
+.hero-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-7);
+  align-items: center;
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: var(--sp-7) var(--sp-5) var(--sp-6);
+}
+
+.hero-copy .t-tag {
+  margin-bottom: var(--sp-3);
+}
+
+.hero-title {
+  margin: 0 0 var(--sp-3);
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.32;
+}
+
+.hero-sub {
+  max-width: 46em;
+  margin: 0 0 var(--sp-5);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.hero-actions {
+  display: flex;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.hero-facts {
+  display: flex;
+  gap: var(--sp-6);
+}
+
+.hero-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hero-fact-val {
+  display: flex;
+  align-items: baseline;
+  line-height: 1;
+}
+
+.hero-fact-num {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.hero-fact-unit {
+  margin-left: 3px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.hero-fact-label {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 /* ---------------- 产品区 ---------------- */
 
 .site-main {
-  max-width: 1200px;
+  max-width: var(--wrap);
   margin: 0 auto;
-  padding: 28px 24px 8px;
+  padding: var(--sp-6) var(--sp-5);
 }
 
-.site-loading {
+/* 锚点偏移：sticky 导航 60px，滚到位时标题不能被压在导航下面 */
+#products,
+#track {
+  scroll-margin-top: 72px;
+}
+
+.site-loading .t-row {
+  min-height: 260px;
+}
+
+.prod-sec + .prod-sec {
+  margin-top: var(--sp-7);
+}
+
+/* 分区标题：一道竖条 + 标题 + 右侧一句定位。
+   竖条是 flex 里的一个真实元素（原先 absolute + padding-left 让标题整体右移 12px，
+   和下方卡片的左边界错开），现在两者都从容器左缘起算。 */
+.sec-head {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 80px 0;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-4);
 }
 
-.prod-sec {
-  margin-bottom: 40px;
-}
-
-/* 分区标题：左侧一道竖条，对齐云厂商的分类标题 */
-.sec-title {
-  position: relative;
-  margin: 0 0 16px;
-  padding-left: 12px;
-  color: var(--text-1);
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.sec-title::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
+.sec-bar {
+  flex: none;
   width: 3px;
   height: 16px;
-  margin-top: -8px;
   border-radius: 2px;
   background: var(--accent);
+}
+
+.sec-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.sec-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 600;
 }
 
 /* ---------------- 产品卡 ---------------- */
@@ -459,12 +573,13 @@ a {
 /* 撑满栅格列：同一行的卡才能等高 */
 .pc {
   height: 100%;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .pc .t-card__body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--sp-3);
   height: 100%;
 }
 
@@ -472,7 +587,7 @@ a {
 .pc-head {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-3);
 }
 
 .pc-icon {
@@ -488,7 +603,7 @@ a {
 }
 
 .pc-title {
-  color: var(--text-1);
+  color: var(--text);
   font-size: 16px;
   font-weight: 600;
 }
@@ -501,9 +616,9 @@ a {
    用 flex 而不是固定 3 列，几项（云主机 3、GPU 2）都能自动等宽。 */
 .pc-stats {
   display: flex;
-  padding: 14px 0;
+  padding: var(--sp-3) 0;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--td-radius-medium);
   background: var(--panel-2);
 }
 
@@ -534,7 +649,7 @@ a {
 }
 
 .pc-stat-num {
-  color: var(--text-1);
+  color: var(--text);
   font-size: 22px;
   font-weight: 600;
   letter-spacing: -0.02em;
@@ -549,6 +664,13 @@ a {
 .pc-stat-label {
   color: var(--muted);
   font-size: 12px;
+}
+
+/* 适用场景：把后端给的一串场景摊成标签，卡面才不至于只有三个数字 */
+.pc-scene {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 /* 信息行：一行辅助说明 */
@@ -568,6 +690,7 @@ a {
 /* 底部：通宽动作，比左右分栏更像一张可点的卡 */
 .pc-foot {
   margin-top: auto;
+  padding-top: var(--sp-1);
 }
 
 .pc-foot .t-button {
@@ -585,45 +708,56 @@ a {
   color: var(--muted);
 }
 
-.cfg-row {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
+.pc-off .pc-stats {
+  background: var(--panel-2);
+  border-style: dashed;
 }
 
 .receipt-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.receipt-id {
-  margin: 8px 0 4px;
-  font-size: 18px;
-  letter-spacing: 0.05em;
+  gap: var(--sp-2);
 }
 
 /* ---------------- 底部进度查询 ---------------- */
 
+/* 原先次要的进度查询拿走了唯一的灰底，主体产品区反而是一片白，
+   主次是反的。现在反过来看：产品区已经有了 Hero，这里就用白底 + 一道上边线，
+   并把 1200 的行宽拆成「左说明 / 右表单」两栏，不再让一张 720 的卡挂在左半边。 */
 .track {
-  padding: 40px 24px 48px;
-  background: #f7f8fa;
+  padding: var(--sp-7) var(--sp-5) var(--sp-8);
+  background: #fff;
   border-top: 1px solid var(--line);
 }
 
 .track-inner {
-  max-width: 1200px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 620px;
+  gap: var(--sp-7);
+  align-items: start;
+  max-width: var(--wrap);
   margin: 0 auto;
 }
 
-.track-card {
-  max-width: 720px;
+.track-copy .sec-head {
+  margin-bottom: var(--sp-3);
+}
+
+.track-desc {
+  max-width: 40em;
+  margin: 0 0 var(--sp-3);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.track-desc.muted {
+  color: var(--muted);
 }
 
 .query {
   display: flex;
-  gap: 8px;
-  max-width: 560px;
+  gap: var(--sp-2);
 }
 
 .query .t-input__wrap {
@@ -632,8 +766,8 @@ a {
 
 /* 查询结果：与表单之间拉开一道分隔，状态与回执号对齐为一行 */
 .track-result {
-  margin-top: 20px;
-  padding-top: 18px;
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
   border-top: 1px solid var(--line);
 }
 
@@ -641,43 +775,33 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
 }
 
 .track-result-id {
-  color: var(--text-1);
+  color: var(--text);
   font-size: 16px;
   font-weight: 600;
   letter-spacing: 0.02em;
 }
 
-.track-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 14px 24px;
-}
-
-.track-kv {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.track-k {
+/* Descriptions 的两个细节：标签列统一宽度（默认是按内容长短排的，
+   长短不一的中文标签会挤出锯齿），内容过长时才换行而不是溢出 */
+.track-result .t-descriptions__label {
+  width: 88px;
   color: var(--muted);
-  font-size: 12px;
 }
 
-.track-v {
-  color: var(--text-1);
-  font-size: 14px;
+.track-result .t-descriptions__content {
+  color: var(--text);
+  overflow-wrap: anywhere;
 }
 
 /* 管理员意见：一块浅色提示，而不是混在字段里 */
 .track-reason {
-  margin: 16px 0 0;
-  padding: 10px 12px;
+  margin: var(--sp-4) 0 0;
+  padding: var(--sp-3);
   border-radius: 6px;
   background: var(--panel-2);
   color: var(--text-2);
@@ -687,7 +811,7 @@ a {
 /* ---------------- 页脚 ---------------- */
 
 .site-footer {
-  padding: 18px 24px;
+  padding: var(--sp-4) var(--sp-5);
   background: #fff;
   border-top: 1px solid var(--line);
 }
@@ -696,26 +820,12 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  max-width: 1200px;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  max-width: var(--wrap);
   margin: 0 auto;
   color: var(--muted);
   font-size: 12px;
-}
-
-@media (max-width: 900px) {
-  .apply-inner {
-    grid-template-columns: 1fr;
-  }
-
-  .sum-card {
-    position: static;
-  }
-
-  .footer-inner {
-    flex-direction: column;
-    align-items: flex-start;
-  }
 }
 
 /* 主色改为腾讯云蓝（#006EFF）。
@@ -731,13 +841,16 @@ a {
 
 /* ============================================================
    TDesign 集成
-   组件细节（按钮/输入/下拉/分段/表格/标签）交给 TDesign，
-   这里只保留三件事：页面布局、产品卡这类强定制块、以及少数对齐微调。
    ============================================================ */
 
-.app-tabs {
-  padding: 12px 0 4px;
-  margin-bottom: 18px;
+/* 控制台是懒加载的：TDesign 组件自带的样式跟着 Admin 分包走，
+   排在主包样式之后。这里的覆盖一律比组件多挂一个类，否则会被反超。
+   TDesign 的 Tabs 自带白底（--td-bg-color-container），在灰底页面上
+   会凭空多出一条通栏白带，先抹掉。 */
+.t-tabs.app-tabs {
+  background: transparent;
+  padding: var(--sp-2) 0 0;
+  margin-bottom: var(--sp-4);
 }
 
 .tab-label {
@@ -747,45 +860,22 @@ a {
 }
 
 /* 表格：默认字号偏大，收到 13px 才能和控制台的密度一致 */
-.t-table {
+.workspace .t-table {
   font-size: 13px;
 }
 
-.t-table__header th {
+.workspace .t-table__header th {
   font-weight: 500;
-}
-
-/* 表单里的标签：TDesign 没有这个轻量的「标签 + 控件」组合，自己留着 */
-.field span {
-  display: block;
-  margin-bottom: 6px;
-  color: var(--text-2);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.field .t-input__wrap,
-.field .t-textarea__inner {
-  width: 100%;
-}
-
-/* 表格单元内的小组合 */
-.stack {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.cell-inline {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
 }
 
 /* ============================================================
    申请页
    ============================================================ */
+
+.apply-page {
+  min-height: 100vh;
+  background: var(--bg);
+}
 
 .app.narrow {
   max-width: 720px;
@@ -793,20 +883,22 @@ a {
   padding: 32px 24px 64px;
 }
 
-/* 步骤条：居中卡片，比裸步骤条更聚焦 */
+/* 步骤条：不再包一层小卡片。
+   原先 600px 居中的盒子和下面通栏的内容卡两条左边界，还多出一圈描边；
+   现在直接铺满内容宽度，只留一道底部分隔线，三步均匀分布。 */
 .apply-steps {
-  max-width: 600px;
-  margin: 4px auto 28px;
-  padding: 18px 32px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  box-shadow: var(--shadow-1);
+  margin: 0 0 var(--sp-5);
+  padding: var(--sp-2) 0 var(--sp-5);
+  border-bottom: 1px solid var(--line);
 }
 
 .apply-steps .t-steps-item__title {
   font-size: 14px;
   font-weight: 600;
+}
+
+.apply-steps .t-steps-item__description {
+  font-size: 12px;
 }
 
 .apply-alert {
@@ -826,7 +918,7 @@ a {
   margin: 0 0 10px;
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-1);
+  color: var(--text);
 }
 
 .opt-group .t-col {
@@ -840,7 +932,7 @@ a {
   width: 100%;
   padding: 13px 15px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--td-radius-medium);
   background: #fff;
   cursor: pointer;
   text-align: left;
@@ -849,6 +941,12 @@ a {
 
 .opt:hover {
   border-color: #b8d4ff;
+}
+
+.opt:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus);
 }
 
 .opt.active {
@@ -865,7 +963,7 @@ a {
 .opt-title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-1);
+  color: var(--text);
 }
 
 .opt-sub {
@@ -883,35 +981,14 @@ a {
   border-top: 1px solid var(--line);
 }
 
-.form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 8px;
-}
-
 .stat-card {
-  position: relative;
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-/* 顶部色条让四张统计卡有结构感，而不是一排裸数字 */
-.stat-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: var(--accent);
+  height: 100%;
 }
 
 .stat-card .t-card__body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 18px 20px;
 }
 
 .stat-card .t-statistic__value {
@@ -922,6 +999,14 @@ a {
 
 .stat-card .t-statistic__title {
   font-size: 13px;
+}
+
+/* 「2 / 32」里的分母：跟数值同字号会读成两个数，压成辅助色小字 */
+.stat-card .t-statistic-content-suffix {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 400;
 }
 
 .receipt-title {
@@ -936,16 +1021,73 @@ a {
 .receipt-id {
   font-size: 15px;
   font-weight: 600;
+  letter-spacing: 0.05em;
 }
 
 .receipt-actions {
   margin-top: 20px;
 }
 
-/* 抽屉内的分组标题：TDesign Descriptions 自带 title，手写 h3 与之对齐 */
-.drawer-body h3 {
-  margin: 20px 0 8px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-1);
+/* ============================================================
+   窄屏收敛
+   ============================================================ */
+
+@media (max-width: 1040px) {
+  /* Hero 的两栏在中等宽度就开始打架，比窄屏断点更早收拢 */
+  .hero-inner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-5);
+    padding: var(--sp-6) var(--sp-5);
+  }
+
+  .hero-title {
+    font-size: 26px;
+  }
+
+  /* 左说明 / 右表单并排 → 上下堆叠 */
+  .track-inner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-5);
+  }
+}
+
+@media (max-width: 900px) {
+  .charts {
+    grid-template-columns: 1fr;
+  }
+
+  .footer-inner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .topbar {
+    padding: var(--sp-4) var(--sp-4) var(--sp-3);
+  }
+
+  .app {
+    padding: var(--sp-4) var(--sp-4) var(--sp-7);
+  }
+
+  .hero-facts {
+    gap: var(--sp-5);
+  }
+
+  .tc-nav-inner,
+  .site-main,
+  .hero-inner,
+  .track,
+  .site-footer {
+    padding-left: var(--sp-4);
+    padding-right: var(--sp-4);
+  }
+
+  .apply-steps {
+    padding: var(--sp-2) 0 var(--sp-4);
+  }
+
+  .track {
+    padding-top: var(--sp-6);
+    padding-bottom: var(--sp-7);
+  }
 }

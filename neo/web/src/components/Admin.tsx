@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, Tabs } from '../td';
 import { api } from '../api';
-import { Logo } from './ui';
+import { BRAND, Logo } from './ui';
 import ApplicationsPane from './ApplicationsPane';
 import Dashboard from './Dashboard';
 import LoginCard from './LoginCard';
@@ -61,7 +61,7 @@ export default function Admin({ onBack }: Props) {
       <header className="topbar">
         <div className="brand">
           <Logo animated />
-          <span>日新坊 · 管理员控制台</span>
+          <span>{BRAND} · 管理员控制台</span>
         </div>
         <div className="topbar-right">
           <Button variant="text" onClick={onBack}>

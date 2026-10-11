@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button, Input } from '../td';
 import { ApiError, api } from '../api';
+import { BRAND } from './ui';
 
 interface Props {
   onSuccess: () => void;
@@ -38,7 +39,7 @@ export default function LoginCard({ onSuccess, onBack, admin = false }: Props) {
     <div className="login-wrap">
       <form className="login-card" onSubmit={submit}>
         {admin && <p className="muted small">平台管理员入口</p>}
-        <h1 className="login-title">日新坊控制台</h1>
+        <h1 className="login-title">{BRAND}控制台</h1>
         <p className="login-sub">
           {admin
             ? '此页面含全部实例与申请人的联系方式，需要验证身份'

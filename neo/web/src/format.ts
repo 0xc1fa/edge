@@ -33,16 +33,27 @@ export function humanUptime(sec: number): string {
   const d = Math.floor(sec / 86400);
   const h = Math.floor((sec % 86400) / 3600);
   const m = Math.floor((sec % 3600) / 60);
-  if (d > 0) return `${d} 天 ${h} 小时`;
+  // 整天时不带「0 小时」：列表里一排「19 天 0 小时」只多不清晰
+  if (d > 0) return h > 0 ? `${d} 天 ${h} 小时` : `${d} 天`;
   if (h > 0) return `${h} 小时 ${m} 分`;
   return `${m} 分钟`;
 }
 
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * 时间统一输出 `YYYY-MM-DD HH:mm:ss`。
+ * 不用 toLocaleString：它随运行环境的 locale 变格式，
+ * 而控制台里同一天的时间必须长得一样。
+ */
 export function humanTime(iso: string): string {
   if (!iso) return '-';
   const t = new Date(iso);
-  if (Number.isNaN(t.getTime())) return iso;
-  return t.toLocaleString('zh-CN', { hour12: false });
+  if (Number.isNaN(t.getTime())) return '-';
+  return (
+    `${t.getFullYear()}-${pad2(t.getMonth() + 1)}-${pad2(t.getDate())} ` +
+    `${pad2(t.getHours())}:${pad2(t.getMinutes())}:${pad2(t.getSeconds())}`
+  );
 }
 
 export function humanPercent(v: number): string {

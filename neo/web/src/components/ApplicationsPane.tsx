@@ -21,6 +21,8 @@ export default function ApplicationsPane() {
   const [reason, setReason] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [command, setCommand] = useState<string | null>(null);
+  // 首帧不把空数组当成「没有申请」，先显示加载态
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -30,6 +32,8 @@ export default function ApplicationsPane() {
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
     }
   }, [filter]);
 
@@ -73,7 +77,7 @@ export default function ApplicationsPane() {
     {
       colKey: 'id',
       title: '回执 / 提交时间',
-      width: 190,
+      width: 180,
       cell: ({ row }) => (
         <div className="stack">
           <div className="mono cell-strong">{row.id}</div>
@@ -84,7 +88,7 @@ export default function ApplicationsPane() {
     {
       colKey: 'hostname',
       title: '主机配置',
-      width: 260,
+      width: 250,
       cell: ({ row }) => {
         const spec = specOf(row);
         return (
@@ -100,35 +104,25 @@ export default function ApplicationsPane() {
       },
     },
     {
+      // 申请人一列把「怎么登录」也收进来：凭据单独占一列会让用途列挤到没法看
       colKey: 'applicant',
-      title: '申请人',
-      width: 170,
+      title: '申请人 / 登录',
+      width: 200,
       cell: ({ row }) => (
         <div className="stack">
-          <div>{row.applicant}</div>
+          <div className="cell-strong">{row.applicant}</div>
           <div className="muted small mono">{row.contact}</div>
-          <div className="muted small">登录：{row.login_user || 'root'}</div>
+          <div className="muted small">
+            {row.login_user || 'root'} · {row.ssh_public_key ? 'SSH 公钥' : '随机口令'}
+          </div>
         </div>
       ),
     },
     { colKey: 'purpose', title: '用途', ellipsis: true },
     {
-      colKey: 'ssh',
-      title: '登录凭据',
-      width: 150,
-      cell: ({ row }) =>
-        row.ssh_public_key ? (
-          <span className="mono small" title={row.ssh_public_key}>
-            {row.ssh_public_key.slice(0, 24)}…
-          </span>
-        ) : (
-          <span className="muted small">随机口令</span>
-        ),
-    },
-    {
       colKey: 'status',
       title: '状态',
-      width: 110,
+      width: 100,
       cell: ({ row }) => (
         <div className="stack">
           {statusTag(row)}
@@ -139,7 +133,7 @@ export default function ApplicationsPane() {
     {
       colKey: 'op',
       title: '处理',
-      width: 230,
+      width: 210,
       cell: ({ row }) =>
         row.status === 'pending' ? (
           <div className="stack">
@@ -216,6 +210,7 @@ export default function ApplicationsPane() {
         <Table
           rowKey="id"
           size="small"
+          loading={loading}
           data={items}
           columns={columns}
           empty={filter === 'pending' ? '没有待处理的申请' : '还没有收到申请'}

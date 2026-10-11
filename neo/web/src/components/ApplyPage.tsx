@@ -16,8 +16,8 @@ import {
   Textarea,
 } from '../td';
 import { ApiError, api } from '../api';
-import { humanMiB } from '../catalog';
-import { Logo } from './ui';
+import { gpuSummary, humanMiB, vramText } from '../catalog';
+import { Logo, BRAND } from './ui';
 import type { Application, Catalog } from '../types';
 
 interface Props {
@@ -111,7 +111,7 @@ export default function ApplyPage({ query, onBack }: Props) {
         <header className="topbar">
           <div className="brand">
             <Logo animated />
-            <span>日新坊</span>
+            <span>{BRAND}</span>
           </div>
           <div className="topbar-right">
             <Button variant="text" onClick={onBack}>
@@ -137,7 +137,7 @@ export default function ApplyPage({ query, onBack }: Props) {
               </Descriptions.DescriptionsItem>
               <Descriptions.DescriptionsItem label="配置">
                 {receipt.gpu_count > 0
-                  ? `${receipt.gpu_count} 张 ${receipt.gpu_model || '显卡'} + 云主机`
+                  ? `${gpuSummary(receipt.gpu_model ?? '', receipt.gpu_count, gpus)} + 云主机`
                   : '轻量云主机'}
               </Descriptions.DescriptionsItem>
               <Descriptions.DescriptionsItem label="登录方式">root · 随机口令</Descriptions.DescriptionsItem>
@@ -167,7 +167,7 @@ export default function ApplyPage({ query, onBack }: Props) {
           {gpu ? 'GPU 云服务器' : '轻量云主机'}
         </Descriptions.DescriptionsItem>
         <Descriptions.DescriptionsItem label="云主机">
-          {spec ? `${spec.title} · ${spec.vcpu}核 ${humanMiB(spec.memory_mib)} ${spec.disk_gb}G` : '-'}
+          {spec ? `${spec.title} · ${spec.vcpu} 核 · ${humanMiB(spec.memory_mib)} · ${spec.disk_gb}GiB` : '-'}
         </Descriptions.DescriptionsItem>
         <Descriptions.DescriptionsItem label="GPU">
           {gpu ? `${gpu.title} × ${cards}` : '不配显卡'}
@@ -191,7 +191,7 @@ export default function ApplyPage({ query, onBack }: Props) {
       <header className="topbar">
         <div className="brand">
           <Logo animated />
-          <span>日新坊</span>
+          <span>{BRAND}</span>
         </div>
         <div className="topbar-right">
           <Button variant="text" onClick={onBack}>
@@ -201,15 +201,18 @@ export default function ApplyPage({ query, onBack }: Props) {
       </header>
 
       <main className="app">
+        {/* 步骤条带一句描述，铺满内容宽度：三步各自说明这一步填什么，
+            而不是三个光秃秃的数字。 */}
         <Steps current={step} className="apply-steps">
-          <Steps.StepItem title="选择产品" />
-          <Steps.StepItem title="申请信息" />
-          <Steps.StepItem title="提交申请" />
+          <Steps.StepItem title="选择产品" content="机型、显卡与数量" />
+          <Steps.StepItem title="申请信息" content="联系方式与用途" />
+          <Steps.StepItem title="提交申请" content="确认后生成回执号" />
         </Steps>
 
         {error && <div className="banner error">{error}</div>}
 
-        {/* 第一步：选产品（云主机 + 可选显卡），用可点选卡片，比下拉更直观 */}
+        {/* 第一步：选产品（云主机 + 可选显卡），用可点选卡片，比下拉更直观。
+            两行各自占满整行：云主机 2 款两列，显卡 3 项三列。 */}
         {step === 0 && (
           <Card bordered title="选择产品">
             {gpu && (
@@ -219,14 +222,15 @@ export default function ApplyPage({ query, onBack }: Props) {
             )}
             <section className="opt-group">
               <h3 className="opt-group-title">云主机</h3>
+              {/* TDesign 栅格是 12 列制：xs=12 独占一行，sm=6 一行两张 */}
               <Row gutter={16}>
                 {flavors.map((f) => (
-                  <Col span={6} key={f.name}>
+                  <Col xs={12} sm={6} key={f.name}>
                     <OptionCard
                       active={flavor === f.name}
                       disabled={!f.available}
                       title={f.title}
-                      sub={`${f.vcpu} 核 ${humanMiB(f.memory_mib)} · ${f.disk_gb}G 系统盘`}
+                      sub={`${f.vcpu} 核 · ${humanMiB(f.memory_mib)} · ${f.disk_gb}GiB 系统盘`}
                       onClick={() => setFlavor(f.name)}
                     />
                   </Col>
@@ -236,16 +240,16 @@ export default function ApplyPage({ query, onBack }: Props) {
             <section className="opt-group">
               <h3 className="opt-group-title">显卡（可选）</h3>
               <Row gutter={16}>
-                <Col span={6}>
+                <Col xs={12} sm={6} md={4}>
                   <OptionCard active={!gpuId} title="不配显卡" sub="仅云主机" onClick={() => setGpuId('')} />
                 </Col>
                 {gpus.map((g) => (
-                  <Col span={6} key={g.id}>
+                  <Col xs={12} sm={6} md={4} key={g.id}>
                     <OptionCard
                       active={gpuId === g.id}
                       disabled={!g.available}
                       title={g.title}
-                      sub={`${g.vram_gb}GB 显存${g.available ? ` · 库存 ${g.total}` : ' · 暂不可选'}`}
+                      sub={`${vramText(g.vram_gb)} 显存${g.available ? ` · 库存 ${g.total} 张` : ' · 暂不可选'}`}
                       onClick={() => setGpuId(g.id)}
                     />
                   </Col>
@@ -279,10 +283,10 @@ export default function ApplyPage({ query, onBack }: Props) {
           </Card>
         )}
 
-        {/* 第二步：填申请信息 */}
+        {/* 第二步：填申请信息。表单区居中，不让整块内容挤在左半屏 */}
         {step === 1 && (
-          <Row gutter={20}>
-            <Col span={8}>
+          <Row gutter={20} justify="center">
+            <Col md={8}>
               <Card bordered title="申请信息">
                 <Form labelAlign="top">
                   <Form.FormItem label="申请人" help="填写姓名">
@@ -321,14 +325,14 @@ export default function ApplyPage({ query, onBack }: Props) {
                 </div>
               </Card>
             </Col>
-            <Col span={4}>{summary}</Col>
+            <Col md={4}>{summary}</Col>
           </Row>
         )}
 
         {/* 第三步：确认并提交 */}
         {step === 2 && (
-          <Row gutter={20}>
-            <Col span={8}>
+          <Row gutter={20} justify="center">
+            <Col md={8}>
               <Card bordered title="确认并提交">
                 <Descriptions column={1} size="small">
                   <Descriptions.DescriptionsItem label="申请人">{applicant || '-'}</Descriptions.DescriptionsItem>
@@ -351,7 +355,7 @@ export default function ApplyPage({ query, onBack }: Props) {
                 </div>
               </Card>
             </Col>
-            <Col span={4}>{summary}</Col>
+            <Col md={4}>{summary}</Col>
           </Row>
         )}
       </main>
