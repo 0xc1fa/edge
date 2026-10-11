@@ -61,7 +61,7 @@ export default function Admin({ onBack }: Props) {
       <header className="topbar">
         <div className="brand">
           <Logo animated />
-          <span>{BRAND} · 管理员控制台</span>
+          <span>{BRAND}</span>
         </div>
         <div className="topbar-right">
           <Button variant="text" onClick={onBack}>

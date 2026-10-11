@@ -496,7 +496,7 @@ export default function PublicSite({ onAdmin }: Props) {
 
       <footer className="site-footer">
         <div className="footer-inner">
-          <span>{BRAND} · 内网自服务平台</span>
+          <span>{BRAND}</span>
           <span>资源核验与开通由管理员统一处理</span>
         </div>
       </footer>

@@ -6,7 +6,7 @@ import logoUrl from '../../../logo/logo.svg';
 import logoAnimatedUrl from '../../../logo/logo-animated.svg';
 
 /** 品牌名只在这里出现一次：改名时改这一行，页面其它地方一律引用它。 */
-export const BRAND = '日新坊';
+export const BRAND = '日新算力';
 
 /** 品牌核心标识：白底圆角方块里一个蓝色小方块（源文件见 /root/edge/neo/logo）。
  *  animated 使用 logo-animated.svg，蓝色块内嵌 SMIL 旋转：长静止→快转→慢转→回正，无飞出。 */
