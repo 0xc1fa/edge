@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28" role="img" aria-label="日新坊">
+  <defs>
+    <filter id="soft" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000000" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  <rect width="28" height="28" rx="8" fill="#ffffff" stroke="rgba(0,0,0,0.06)" stroke-width="1" filter="url(#soft)"/>
+  <rect x="6.72" y="6.72" width="14.56" height="14.56" rx="2" fill="#006eff">
+    <animateTransform attributeName="transform" type="rotate"
+      values="0 14 14; 0 14 14; 360 14 14; 540 14 14; 720 14 14"
+      keyTimes="0; 0.8; 0.9; 0.96; 1"
+      calcMode="linear" dur="9s" repeatCount="indefinite"/>
+  </rect>
+</svg>

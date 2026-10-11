@@ -1,0 +1,53 @@
+# 轻量云主机控制台
+#
+#   docker compose up -d --build
+#   http://<宿主IP>:5902
+#
+# ⚠ 工程名必须显式指定：宿主已有 obs（监控栈）等同名风险的历史教训，
+#   目录推断的工程名去做 down --remove-orphans 时会误伤别人的容器。
+name: edge-neo
+
+services:
+  neo:
+    build:
+      context: .
+      # 构建容器同样要用宿主网络：默认 bridge 的 DNS 是 mihomo 的 fake-ip，会拉不到依赖
+      network: host
+      args:
+        VERSION: "0.1.1"
+    image: neo:0.1.1
+    container_name: neo
+    restart: unless-stopped
+    # 为什么必须 host 网络：容器要读写宿主的 incus unix socket，
+    # 且 bridge 的 DNS 会被 TUN 劫持成 fake-ip，服务出口会变成黑洞。
+    network_mode: host
+    environment:
+      TZ: Asia/Shanghai
+      NEO_SOCKET: /var/lib/incus/unix.socket
+      NEO_ADDR: :5902
+      NEO_DATA_DIR: /data
+      NEO_WEB_DIR: /usr/share/neo/web
+      NEO_INTERVAL: 10s
+      NEO_SESSION_TTL: 12h
+      # GPU 总量用于规格可售判断；宿主 2 张 4090 中对外只卖 1 张，
+      # resources 上报不到卡，所以显式配置
+      NEO_GPU_TOTAL: "1"
+      # 想自己指定管理员口令时取消下面一行注释；留空则首次启动自动生成随机口令
+      # NEO_ADMIN_PASSWORD: change-me
+    volumes:
+      # 只读挂载 socket：第一版只做只读展示，物理上杜绝误操作
+      - /var/lib/incus/unix.socket:/var/lib/incus/unix.socket:ro
+      # 口令哈希与会话密钥落在这里，宿主可直接查看
+      - ./data:/data
+    healthcheck:
+      # 用二进制自检，不依赖镜像内是否装了 curl
+      test: ["CMD", "/usr/local/bin/neo", "probe"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
