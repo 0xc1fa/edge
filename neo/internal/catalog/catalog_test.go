@@ -46,9 +46,13 @@ func TestZeroStockNeverSellable(t *testing.T) {
 }
 
 func TestEvaluateGPUSoldOutByModel(t *testing.T) {
-	c := Default()
-	// 4090 两张都被占（含待处理申请的预占）
-	out := EvaluateGPUs(c.GPUModels, Capacity{GPUAllocatedByModel: map[string]int{"rtx-4090": 2}})
+	// 显式给库存，不取 Default()：目录里的总量是「这台机器对外卖几张」，
+	// 属于会随部署调整的事实。这个测试要盯的是「占用怎么算」，
+	// 让期望值跟着部署变，只会白红 —— 上次 GPU 总量从 2 调到 1 就是这样。
+	models := []GPUModel{{ID: "rtx-4090", Total: 2, Available: true}}
+
+	// 两张都被占（含待处理申请的预占）
+	out := EvaluateGPUs(models, Capacity{GPUAllocatedByModel: map[string]int{"rtx-4090": 2}})
 	for _, m := range out {
 		if m.ID == "rtx-4090" && m.Available {
 			t.Error("4090 已被占满却仍标可售")
@@ -56,10 +60,13 @@ func TestEvaluateGPUSoldOutByModel(t *testing.T) {
 		if m.ID == "rtx-4090" && m.Reason == "" {
 			t.Error("售罄时应给出原因，页面上要展示给申请人")
 		}
+		if m.ID == "rtx-4090" && m.AvailableCards != 0 {
+			t.Errorf("占满时可配张数应为 0，实际 %d", m.AvailableCards)
+		}
 	}
 
 	// 只占一张：仍可售，但最多只能再配 1 张
-	out = EvaluateGPUs(c.GPUModels, Capacity{GPUAllocatedByModel: map[string]int{"rtx-4090": 1}})
+	out = EvaluateGPUs(models, Capacity{GPUAllocatedByModel: map[string]int{"rtx-4090": 1}})
 	for _, m := range out {
 		if m.ID == "rtx-4090" && !m.Available {
 			t.Errorf("只占一张时仍应可售，实际 %s", m.Reason)
@@ -67,8 +74,13 @@ func TestEvaluateGPUSoldOutByModel(t *testing.T) {
 		if m.ID == "rtx-4090" && m.AvailableCards != 1 {
 			t.Errorf("剩一张时可配张数应为 1，实际 %d", m.AvailableCards)
 		}
-		if m.Total <= 0 && m.AvailableCards != 0 {
-			t.Errorf("%s 零库存时可配张数应为 0，实际 %d", m.ID, m.AvailableCards)
+	}
+
+	// 一张没占：最多可以配到单实例上限
+	out = EvaluateGPUs(models, Capacity{})
+	for _, m := range out {
+		if m.ID == "rtx-4090" && m.AvailableCards != MaxGPUCards {
+			t.Errorf("空闲时可配张数应为 %d，实际 %d", MaxGPUCards, m.AvailableCards)
 		}
 	}
 }
@@ -133,9 +145,20 @@ func TestWithGPUStockOnlyOverridesPracticalModel(t *testing.T) {
 	if installed == nil || installed.Total != 4 {
 		t.Errorf("实测库存未正确注入: %+v", installed)
 	}
-	// 配置缺失时保留目录里的实测值，而不是把库存调成 0
-	if got := Default().WithGPUStock(0).GPUModels[0].Total; got != 2 {
-		t.Errorf("库存配置为 0 应视为「没配」，实际得到 %d", got)
+	// 配置缺失时保留目录里的实测值，而不是把库存调成 0。
+	// 期望值从目录自己身上取：这个测试要说的是「0 等于没配」这条规则，
+	// 目录里那张卡到底写几张是部署事实 —— 把 2 写死在断言里，
+	// 下次调库存就又是一次无谓的红。
+	var want int
+	for _, m := range Default().GPUModels {
+		if m.DefaultTarget {
+			want = m.Total
+		}
+	}
+	for _, m := range Default().WithGPUStock(0).GPUModels {
+		if m.DefaultTarget && m.Total != want {
+			t.Errorf("库存配置为 0 应视为「没配」，实际得到 %d（期望 %d）", m.Total, want)
+		}
 	}
 }
 

@@ -48,6 +48,8 @@ export interface InstanceView {
   pid: number;
   processes: number;
   cpu_seconds: number;
+  /** 当前 CPU 占用百分比（由对账层用两次采样差算出，单看累计值算不出来） */
+  cpu_percent: number;
   mem_usage: number;
   mem_peak: number;
   mem_total: number;
@@ -82,9 +84,91 @@ export interface Capacity {
   disk: { allocated: number };
 }
 
+/** 会话信息。未登录也返回：前端靠它决定要不要显示登录页。 */
 export interface SessionInfo {
   authenticated: boolean;
   role: string;
+  /** 会话还有效但已不可用时，服务端给出的原因（如「空闲超时」） */
+  reason?: string;
+  user?: AccountBrief;
+  session?: SessionBrief;
+  defaults: SessionDefaults;
+}
+
+export interface AccountBrief {
+  id: string;
+  name: string;
+  role: AccountRole;
+}
+
+export interface SessionBrief {
+  id: string;
+  created_at: string;
+  last_seen_at: string;
+  expires_at: string;
+  max_idle: string;
+  remain_seconds: number;
+  device: string;
+}
+
+export interface SessionDefaults {
+  /** 已是人读的说法：长期有效时是「长期」，不是「0s」 */
+  token_ttl: string;
+  max_idle: string;
+}
+
+export type AccountRole = 'admin' | 'member';
+
+/** 成员。members 没有任何凭据字段：登录靠一次性凭证。 */
+export interface Account {
+  id: string;
+  name: string;
+  role: AccountRole;
+  status: 'active' | 'disabled';
+  note: string;
+  token_ttl: string;
+  max_idle: string;
+  /** 跟上两个字段的区别：这是把全局默认值算进去之后真正生效的时长 */
+  effective_token_ttl: string;
+  effective_max_idle: string;
+  created_at: string;
+  last_login_at: string;
+  sessions: number;
+  online: number;
+  pending_invites: number;
+}
+
+/** 一次性登录凭证。失去兑换资格之后服务端只回前 6 位（masked）。 */
+export interface Invite {
+  token: string;
+  masked: boolean;
+  user_id: string;
+  user_name: string;
+  created_by: string;
+  created_at: string;
+  expires_at: string;
+  remain_seconds: number;
+  status: 'valid' | 'used' | 'revoked' | 'expired';
+}
+
+/** 会话台账里的一行。online 由心跳算出来，不是「cookie 还没过期」。 */
+export interface SessionRow {
+  id: string;
+  user_id: string;
+  user_name: string;
+  role: string;
+  ip: string;
+  user_agent: string;
+  device: string;
+  created_at: string;
+  last_seen_at: string;
+  expires_at: string;
+  max_idle: string;
+  online: boolean;
+  expired: boolean;
+  idle_seconds: number;
+  /** 剩余秒数；**-1 表示长期有效**，0 表示此刻已到期 */
+  remain_seconds: number;
 }
 
 /** 标准实例规格。available 由服务端按当前宿主余量实时算出。 */
@@ -150,6 +234,47 @@ export interface ApplyInput {
 }
 
 /** 申请单。管理员视角能看到完整联系方式与公钥，申请人查询时服务端已脱敏。 */
+/** GPU 预约：某台机器在某一天的一段固定时段里用卡。 */
+export interface GPUBooking {
+  id: string;
+  instance: string;
+  applicant: string;
+  contact: string;
+  purpose: string;
+  /** YYYY-MM-DD */
+  date: string;
+  card_count: number;
+  /** 待处理 → 已批准 → 使用中 → 已结束；驳回与取消是另外两个终点 */
+  status: 'pending' | 'approved' | 'rejected' | 'active' | 'ended' | 'cancelled';
+  reason: string;
+  created_at: string;
+  updated_at: string;
+  decided_at: string;
+  decided_by: string;
+  attached_at: string;
+  detached_at: string;
+  /** 挂载时写进实例的设备名；摘卡按它摘，不能靠重新找一遍 */
+  device: string;
+  window_start: string;
+  window_end: string;
+  /** 距离时段结束还有多少秒；未挂载或已结束时为 0 */
+  remain_seconds: number;
+  ended: boolean;
+}
+
+/** GPU 排期总览：台账 + 此刻还能批几张 + 时段口径。 */
+export interface GPUOverview {
+  bookings: GPUBooking[];
+  pending: number;
+  available: number;
+  total: number;
+  window: string;
+  today: string;
+  can_manage: boolean;
+  /** 服务端是否配置了显卡地址；没配置时挂载不可用 */
+  cards_visible: boolean;
+}
+
 export interface Application {
   id: string;
   hostname: string;

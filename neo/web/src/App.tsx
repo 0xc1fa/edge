@@ -3,11 +3,16 @@ import ApplyPage from './components/ApplyPage';
 import PublicSite from './components/PublicSite';
 
 /**
- * 路由只有三个面：
+ * 路由有四个面：
  *
  *   `#/`               公开产品页 —— 无访问控制，任何人可浏览规格
  *   `#/apply?...`      申请页 —— 从产品页带着选型进来，独立成页
- *   `#/admin`          管理员控制台 —— 登录后才能看到实例与申请人的联系方式
+ *   `#/login?token=`   登录页 —— 凭证由管理员在后台签发后发给使用者的那条链接
+ *   `#/admin`          控制台 —— 登录后才能看到实例与申请人的联系方式
+ *
+ * 登录为什么独立成页而不是挂在 /admin 里：凭证要放在 URL 上才能一次点开就登进来，
+ * 而 #/admin 是不该外发的地址。分开之后，/admin 保持匿名不可读，
+ * 使用者拿到的是一条让别人看不懂、自己也只用一次的链接。
  *
  * 用 hash 而不是 pathname：静态资源由 Go 同源托管，hash 不产生额外的服务端路由，
  * 将来套进 Tauri 桌面壳也不会因为子路径找不到 index.html。
@@ -24,11 +29,12 @@ interface ApplyQuery {
   cards: number;
 }
 
-function parseHash(hash: string): { view: string; query: ApplyQuery } {
+function parseHash(hash: string): { view: string; token: string; query: ApplyQuery } {
   const [path, search] = hash.replace(/^#/, '').split('?');
   const p = new URLSearchParams(search ?? '');
   return {
     view: path || '/',
+    token: p.get('token') ?? '',
     query: {
       flavor: p.get('flavor') ?? '',
       gpu: p.get('gpu') ?? '',
@@ -46,16 +52,17 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
-  const { view, query } = parseHash(hash);
+  const { view, token, query } = parseHash(hash);
 
   const goHome = () => {
     window.location.hash = '#/';
   };
 
-  if (view.startsWith('/admin')) {
+  // 控制台的两个入口共用同一个组件：未登录时它自己会落到登录卡上
+  if (view.startsWith('/admin') || view.startsWith('/login')) {
     return (
       <Suspense fallback={<div className="center muted">正在加载控制台…</div>}>
-        <Admin onBack={goHome} />
+        <Admin onBack={goHome} token={view.startsWith('/login') ? token : ''} />
       </Suspense>
     );
   }

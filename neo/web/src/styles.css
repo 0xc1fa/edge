@@ -280,6 +280,21 @@ a {
   flex-wrap: wrap;
 }
 
+/* 面板脚：解释这一屏数字是怎么来的。
+   会话台账上的「在线」、凭证列表上的脱敏规则都属于这一类：
+   不写出来的话，看到的人会按自己的想象去理解。 */
+.panel-foot {
+  margin-top: 12px;
+  line-height: 1.7;
+}
+
+.ellipsis,
+.small.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .cell-strong {
   font-weight: 600;
 }

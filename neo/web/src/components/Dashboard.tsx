@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Col, Loading, Row, Statistic, Table, Tag } from '../td';
+import { Button, Card, Col, Loading, Row, Space, Statistic, Table, Tag } from '../td';
 import type { PrimaryTableCol } from 'tdesign-react';
 import { ApiError, api } from '../api';
 import { byteParts, humanBytes, humanTime, humanUptime } from '../format';
+import GPUApplyDrawer from './GPUApplyDrawer';
 import InstanceDrawer from './InstanceDrawer';
 import { StatusBadge, TypeBadge, UsageBar } from './ui';
 import type { Capacity, Health, InstanceView, Sample } from '../types';
@@ -15,6 +16,11 @@ const POLL_MS = 10_000;
  *
  * 事实来源是 Incus 本身：这里不持有任何可写的实例状态，
  * 所以「页面显示与 incus list 不一致」这类经典故障从根上不存在。
+ *
+ * 形态是宽表而不是一台一张卡：这一页的读者要横向比对多台机器
+ * （谁内存满了、谁没在跑、谁的盘快满了），表格擅长这件事。
+ * 曾经改成一机一卡，试过之后确认那更适合「只看自己那一两台的租户」，
+ * 而不是要对全机房做判断的管理员 —— 于是改回了表。
  */
 export default function Dashboard() {
   const [instances, setInstances] = useState<InstanceView[]>([]);
@@ -26,6 +32,8 @@ export default function Dashboard() {
   // 首帧不给假数据：没拿到之前宁可显示加载态，也不要先摆一排 0 再跳变
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // 从「未挂载」那一列点出来的申请抽屉；空串表示没在申请
+  const [applyFor, setApplyFor] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -170,8 +178,19 @@ export default function Dashboard() {
     {
       colKey: 'gpu',
       title: 'GPU',
-      width: 80,
-      cell: ({ row }) => <span className="mono">{row.gpus.length ? `${row.gpus.length} 张` : '未挂载'}</span>,
+      width: 150,
+      cell: ({ row }) =>
+        row.gpus.length ? (
+          <span className="mono">{row.gpus.length} 张</span>
+        ) : (
+          // 「未挂载」旁边直接给出口：看到没卡的人，下一步就是想要一张卡
+          <Space size={4}>
+            <span className="muted small">未挂载</span>
+            <Button size="small" variant="text" onClick={() => setApplyFor(row.name)}>
+              申请
+            </Button>
+          </Space>
+        ),
     },
   ];
 
@@ -260,6 +279,14 @@ export default function Dashboard() {
       </section>
 
       <InstanceDrawer instance={selectedInstance} series={series} onClose={() => setSelected(null)} />
+
+      {applyFor && (
+        <GPUApplyDrawer
+          instance={applyFor}
+          onClose={() => setApplyFor('')}
+          onDone={() => void load()}
+        />
+      )}
     </div>
   );
 }

@@ -50,13 +50,15 @@ FROM alpine:3.22
 COPY --from=go-builder /out/neo /usr/local/bin/neo
 COPY --from=web-builder /web/dist /usr/share/neo/web
 
+# 会话寿命不在这里给默认值：不设即长期有效，需要收紧时用 NEO_SESSION_TTL 指定。
+# 写在镜像里会让「长期」这个默认取不到 —— 容器一旦继承它，部署者改不掉。
 ENV TZ=Asia/Shanghai \
     NEO_SOCKET=/var/lib/incus/unix.socket \
     NEO_ADDR=:5902 \
     NEO_DATA_DIR=/data \
     NEO_WEB_DIR=/usr/share/neo/web \
-    NEO_INTERVAL=10s \
-    NEO_SESSION_TTL=12h
+    NEO_INVITE_TTL=15m \
+    NEO_INTERVAL=10s
 
 RUN mkdir -p /data
 

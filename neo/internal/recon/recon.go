@@ -66,6 +66,13 @@ func New(c *incus.Client, interval time.Duration, log *slog.Logger) *Loop {
 // Interval 返回采集间隔，健康判定要用它推算容忍窗口。
 func (l *Loop) Interval() time.Duration { return l.interval }
 
+// Refresh 立刻重取一次快照。
+//
+// 存在理由是挂载与摘卡：那两个动作改的是宿主上的事实，
+// 而对账默认是每 10 秒一轮。不主动催一次的话，
+// 管理员会看到「操作成功」但页面上设备还没出现，然后怀疑自己点错了。
+func (l *Loop) Refresh(ctx context.Context) { l.refresh(ctx) }
+
 // Run 阻塞运行，先立刻取一次，再按间隔轮询。
 func (l *Loop) Run(ctx context.Context) {
 	l.refresh(ctx)
@@ -101,7 +108,14 @@ func (l *Loop) refresh(ctx context.Context) {
 				l.log.Warn("取实例状态失败", "instance", inst.Name, "err", sErr)
 			}
 		}
-		views = append(views, incus.NewView(inst, st, now))
+		v := incus.NewView(inst, st, now)
+		// 当前 CPU 占用。与 series 用的是同一套算法（累计时间差 / 墙钟差 / 核数），
+		// 但多存一份在 View 上：列表页要每台都显示「现在多少」，
+		// 而 series 只为选中的那一台保留。
+		if v.Running {
+			v.CPUPercent = l.cpuPercentLocked(v, now)
+		}
+		views = append(views, v)
 	}
 	sort.Slice(views, func(i, j int) bool { return views[i].Name < views[j].Name })
 
@@ -128,40 +142,60 @@ func (l *Loop) markError(err error) {
 	l.log.Error("对账失败", "err", err)
 }
 
+// cpuPercentLocked 用两次采样的差算出瞬时 CPU 占用。
+//
+// 单看累计值是算不出来的：cpu_seconds 单调递增，
+// 「现在用了多少」必须靠「这段时间涨了多少」除以「这段时间过了多久」。
+// 所以这个函数是 recon 的职责 —— 只有它持有上一次的采样点。
+//
+// 调用方必须持有写锁（它会更新 prevCPU 基准）。
+func (l *Loop) cpuPercentLocked(v incus.View, now time.Time) float64 {
+	hostCores := 0
+	if l.resources != nil {
+		hostCores = l.resources.CPU.Total
+	}
+	cores := float64(v.QuotaCPUNum())
+	if cores <= 0 {
+		cores = float64(hostCores)
+	}
+	if cores <= 0 {
+		cores = 1
+	}
+	prev, ok := l.prevCPU[v.Name]
+	if !ok {
+		// 第一次见：先记基准，这一轮没有百分比可报
+		l.prevCPU[v.Name] = cpuSnap{at: now, usage: int64(v.CPUSeconds * 1e9)}
+		return 0
+	}
+	wall := now.Sub(prev.at).Seconds()
+	if wall <= 0 {
+		return 0
+	}
+	delta := v.CPUSeconds - float64(prev.usage)/1e9
+	if delta < 0 {
+		delta = 0
+	}
+	pct := delta / (wall * cores) * 100
+	if pct > 100 {
+		pct = 100
+	}
+	l.prevCPU[v.Name] = cpuSnap{at: now, usage: int64(v.CPUSeconds * 1e9)}
+	return pct
+}
+
 // appendSamplesLocked 追加采样点。调用方必须持有写锁。
 func (l *Loop) appendSamplesLocked(views []incus.View, now time.Time) {
 	for _, v := range views {
 		if !v.Running {
 			continue
 		}
-		hostCores := 0
-		if l.resources != nil {
-			hostCores = l.resources.CPU.Total
-		}
 		s := Sample{TS: now.Unix(), MemUsage: v.MemUsage}
 
-		cores := float64(v.QuotaCPUNum())
-		if cores <= 0 {
-			cores = float64(hostCores)
-		}
-		if cores <= 0 {
-			cores = 1
-		}
-		// 累计 CPU 时间是纳秒级，与上一次采样做差才是区间占用
-		if prev, ok := l.prevCPU[v.Name]; ok {
-			wall := now.Sub(prev.at).Seconds()
-			if wall > 0 {
-				delta := v.CPUSeconds - float64(prev.usage)/1e9
-				if delta >= 0 {
-					pct := delta / (wall * cores) * 100
-					if pct > 100 {
-						pct = 100
-					}
-					s.CPUPercent = pct
-				}
-			}
-		}
-		l.prevCPU[v.Name] = cpuSnap{at: now, usage: int64(v.CPUSeconds * 1e9)}
+		// 百分比复用同一段算法：列表页与曲线图必须给出同一个数，
+		// 否则「卡片上说 40%、折线图上却看不出来」这种矛盾没法解释。
+		// 注意它会顺带更新 prevCPU 基准 —— 所以 refresh 里的列表百分比
+		// 必须先算好，否则这里会把基准推到与列表同一次采样上。
+		s.CPUPercent = l.cpuPercentLocked(v, now)
 
 		buf := append(l.series[v.Name], s)
 		if len(buf) > ringSize {

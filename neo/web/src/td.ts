@@ -16,6 +16,8 @@
  */
 export { default as Badge } from 'tdesign-react/es/badge';
 export { default as Button } from 'tdesign-react/es/button';
+// GPU 按天预约，选日期是这条流程的第一下动作，用框架的选择器而不是手搓 input
+export { default as DatePicker } from 'tdesign-react/es/date-picker';
 export { default as Input } from 'tdesign-react/es/input';
 export { default as Radio } from 'tdesign-react/es/radio';
 export { default as Select } from 'tdesign-react/es/select';
@@ -35,5 +37,12 @@ export { default as Form } from 'tdesign-react/es/form';
 export { default as Skeleton } from 'tdesign-react/es/skeleton';
 export { default as Loading } from 'tdesign-react/es/loading';
 export { default as Space } from 'tdesign-react/es/space';
+export { default as Progress } from 'tdesign-react/es/progress';
 export { default as Statistic } from 'tdesign-react/es/statistic';
 export { default as Steps } from 'tdesign-react/es/steps';
+
+// 反馈件：删除、签发这类不可撤销的动作需要二次确认，
+// 手写 window.confirm 会在界面上留下一个系统弹窗，和整套组件不在同一个视觉语言里。
+export { default as Dialog } from 'tdesign-react/es/dialog';
+export { default as Popconfirm } from 'tdesign-react/es/popconfirm';
+export { default as Tooltip } from 'tdesign-react/es/tooltip';

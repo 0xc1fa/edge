@@ -101,7 +101,7 @@ type applyRequest struct {
 
 // handleApply 匿名提交开通申请。成功后返回回执号，申请人可凭它自助查进度。
 func (s *Server) handleApply(w http.ResponseWriter, r *http.Request) {
-	src := clientIP(r)
+	src := s.clientIP(r)
 	// 入口这道闸是防试探的：不许脚本反复调用来枚举「哪些主机名已存在」
 	if ok, retry := s.cfg.ApplyFailLimit.Allow(src); !ok {
 		w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())+1))

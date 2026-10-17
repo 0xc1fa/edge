@@ -59,3 +59,25 @@ export function humanTime(iso: string): string {
 export function humanPercent(v: number): string {
   return `${v.toFixed(0)}%`;
 }
+
+/**
+ * 把秒数说成「还剩多久」。会话台账与凭证列表都要显示剩余寿命，
+ * 统一在这里编人类的说法，避免一处写成「3 天 5 小时」另一处写成「77:05:00」。
+ */
+export function humanDuration(sec: number): string {
+  if (!Number.isFinite(sec) || sec <= 0) return '已到期';
+  const min = Math.floor(sec / 60);
+  const hour = Math.floor(min / 60);
+  const day = Math.floor(hour / 24);
+  if (day > 0) return hour % 24 > 0 ? `${day} 天 ${hour % 24} 小时` : `${day} 天`;
+  if (hour > 0) return min % 60 > 0 ? `${hour} 小时 ${min % 60} 分` : `${hour} 小时`;
+  return `${Math.max(1, min)} 分钟`;
+}
+
+/** 相对现在的「多久之前」，用于最后活跃时间这种需要一眼判断新旧的场合。 */
+export function humanAgo(iso: string): string {
+  if (!iso) return '-';
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '-';
+  return `${humanDuration((Date.now() - t) / 1000)}前`;
+}

@@ -1,13 +1,13 @@
 SHELL := /bin/bash
-IMAGE  := neo:0.1.0
-VER    := 0.1.0
+IMAGE  := neo:0.1.9
+VER    := 0.1.9
 
 # 宿主没有 Go/Node 工具链，所有编译都在容器里完成。
 # 基础镜像用本地已存在的 ubuntu:24.04，Go/Node 从 build/ 下的官方包解压。
 GO_IMAGE  := ubuntu:24.04
 NODE_MNT  := $(CURDIR)/build:/build:ro
 
-.PHONY: help vet test build web image up down logs restart smoke clean token release
+.PHONY: help vet test build web image up down logs restart smoke clean invite password release
 
 help:
 	@echo "vet      静态检查（go vet）"
@@ -17,7 +17,8 @@ help:
 	@echo "image    构建 Docker 镜像"
 	@echo "up/down  启动 / 停止服务"
 	@echo "smoke    冒烟验证：健康、鉴权、与 incus list 逐字段比对"
-	@echo "token    显示首发管理员口令（仅在尚未登录过时存在）"
+	@echo "invite   签发一条一次性登录凭证（把人重新放进来时的后路）"
+	@echo "password 显示管理员口令；RESET=1 重新生成一个"
 
 vet:
 	docker run --rm -v "$(CURDIR)":/src -w /src -e HOME=/root $(GO_IMAGE) bash -c \
@@ -55,8 +56,11 @@ logs:
 smoke:
 	./scripts/smoke.sh
 
-token:
-	@cat data/bootstrap-password.txt 2>/dev/null || echo "明文口令已不存在：要么已完成首次登录，要么服务尚未启动"
+invite:
+	@docker compose run --rm --no-deps --entrypoint /usr/local/bin/neo neo invite --name $(or $(NAME),管理员) --role admin --ttl 15m
+
+password:
+	@docker compose run --rm --no-deps --entrypoint /usr/local/bin/neo neo password $(if $(RESET),--reset,)
 
 clean:
 	rm -rf bin web/dist

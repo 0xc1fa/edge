@@ -4,7 +4,7 @@
 # 检查四件事：
 #   ① 健康接口 ok，且 last_reconcile_age_ms 在容忍窗口内
 #   ② 未登录访问 /api/instances 必须是 401（登录收口不能是摆设）
-#   ③ 用 bootstrap 口令登录 → 会话可用 → 实例列表与 incus list 的真实值逐字相同
+#   ③ 用一次性凭证登录 → 会话可用 → 实例列表与 incus list 的真实值逐字相同
 #   ④ 静态首页可访问
 set -u
 
@@ -12,10 +12,19 @@ ADDR="${ADDR:-http://127.0.0.1:5902}"
 DATA_DIR="${DATA_DIR:-$(dirname "$0")/../data}"
 FAIL=0
 
-# 口令只在脚本开头读一次：首次登录成功后后端会销毁 bootstrap 文件，
-# 放到后面再读就取不到了。也支持外部注入 SMOKE_PASSWORD=xxx。
-PW="${SMOKE_PASSWORD:-}"
-[ -f "$DATA_DIR/bootstrap-password.txt" ] && PW=$(tr -d '\r\n' < "$DATA_DIR/bootstrap-password.txt")
+# 登录凭证一次性兑换即作废，所以这里要注意两件事：
+#   1. 整脚本只兑换一次，之后全程复用同一个 cookie jar；
+#   2. bootstrap 文件只在全新部署时生成，因此只在「刚装好还没人登过」时有效。
+# 已经跑过一轮的服务，请在控制台 成员 → 签发 现场复制一条，用 SMOKE_TOKEN=xxx 注入。
+TOKEN="${SMOKE_TOKEN:-}"
+if [ -z "$TOKEN" ] && [ -f "$DATA_DIR/bootstrap-invite.txt" ]; then
+  TOKEN=$(grep -oE 'token=[A-Za-z0-9_-]{16,}' "$DATA_DIR/bootstrap-invite.txt" | head -1 | cut -d= -f2)
+fi
+
+# 会话凭证容器，全局复用：兑换一次的凭证撑不起两次登录
+JAR=$(mktemp)
+cleanup() { rm -f "$JAR"; }
+trap cleanup EXIT
 
 pass() { printf '  \033[32m✔\033[0m %s\n' "$1"; }
 bad()  { printf '  \033[31m✘\033[0m %s\n' "$1"; FAIL=$((FAIL + 1)); }
@@ -34,16 +43,21 @@ code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "$ADDR/api/instances
 if [ "$code" = "401" ]; then pass "未登录访问实例列表返回 401"; else bad "未登录返回 $code，期望 401"; fi
 
 sec "3/4 登录并比对真相"
-if [ -z "$PW" ]; then
-  printf '  \033[33m●\033[0m 跳过：未拿到口令（bootstrap 文件已销毁且未设 SMOKE_PASSWORD）\n'
-  printf '     重设口令：docker compose down && rm -f %s/secrets.json && docker compose up -d\n' "$DATA_DIR"
+if [ -z "$TOKEN" ]; then
+  printf '  \033[33m●\033[0m 跳过：没有可用的凭证\n'
+  printf '     在控制台「成员 → 签发」复制一条，用 SMOKE_TOKEN=xxx 再跑本脚本；\n'
+  printf '     全新部署时 $DATA_DIR/bootstrap-invite.txt 里也有一条，但它只能用一次。\n'
 else
-  jar=$(mktemp)
-  login=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -c "$jar" \
-    -H 'Content-Type: application/json' -d "{\"password\":\"$PW\"}" "$ADDR/api/auth/login")
-  if [ "$login" = "200" ]; then pass "登录成功，会话已签发"; else bad "登录失败 HTTP $login"; fi
+  login=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -c "$JAR" \
+    -H 'Content-Type: application/json' -d "{\"token\":\"$TOKEN\"}" "$ADDR/api/auth/redeem")
+  if [ "$login" = "200" ]; then pass "凭证兑换成功，会话已签发"; else bad "兑换失败 HTTP $login"; fi
 
-  body=$(curl -sS --max-time 8 -b "$jar" "$ADDR/api/instances")
+  # 再用一次同一凭证必须失败 —— 这条比「能登录」更要紧
+  reuse=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 \
+    -H 'Content-Type: application/json' -d "{\"token\":\"$TOKEN\"}" "$ADDR/api/auth/redeem")
+  if [ "$reuse" = "401" ]; then pass "凭证不可重复使用"; else bad "凭证竟然能二次兑换（HTTP $reuse）"; fi
+
+  body=$(curl -sS --max-time 8 -b "$JAR" "$ADDR/api/instances")
   web_ip=$(printf '%s' "$body" | python3 -c '
 import sys, json
 items = json.load(sys.stdin)["instances"]
@@ -65,8 +79,6 @@ print([it["quota_cpu"] for it in items if it["name"] == "tenant01"][0])
   [ "$web_cpu" = "$true_cpu" ] \
     && pass "tenant01 CPU 配额与 incus config 一致（$web_cpu）" \
     || bad "CPU 配额不一致：页面 $web_cpu / incus $true_cpu"
-
-  rm -f "$jar"
 fi
 
 sec "4/4 静态页面"
@@ -213,12 +225,11 @@ code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "$ADDR/api/instances
 [ "$code" = "401" ] && pass "未登录不可读实例列表" || bad "实例列表未收口（$code）"
 
 # 登录后 Admin 侧应能看到未脱敏的联系方式，并把它结单，避免污染管理员待办
-if [ -z "$PW" ] || [ -z "$RID" ]; then
-  printf '  \033[33m●\033[0m 跳过管理员侧校验（无口令或回执）\n'
+# 这里复用第 3 节换来的会话：凭证已经作废，不可能再兑一次。
+if [ -z "$TOKEN" ] || [ -z "$RID" ]; then
+  printf '  \033[33m●\033[0m 跳过管理员侧校验（无凭证或回执）\n'
 else
-  jar2=$(mktemp)
-  curl -sS -o /dev/null --max-time 8 -c "$jar2" -H 'Content-Type: application/json' \
-    -d "{\"password\":\"$PW\"}" "$ADDR/api/auth/login"
+  jar2="$JAR"
   raw=$(curl -sS --max-time 8 -b "$jar2" "$ADDR/api/applications" | python3 -c '
 import sys, json
 a = json.load(sys.stdin)["applications"]
@@ -235,7 +246,22 @@ print("yes" if (mine and mine[0]["contact"] == "smoke@example.com") else "no")
   else
     bad "管理员处理失败 HTTP $code：$(cat /tmp/neo-decision.json)"
   fi
-  rm -f "$jar2"
+
+  # 会话台账现在也是可列举的：踢掉自己之后，原来的 cookie 必须立刻不能用
+  code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -b "$jar2" "$ADDR/api/sessions")
+  if [ "$code" = "200" ]; then pass "会话台账可读"; else bad "会话台账不可读（HTTP $code）"; fi
+
+  sid=$(curl -sS --max-time 8 -b "$jar2" "$ADDR/api/sessions" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+print(d.get("current", ""))')
+  if [ -n "$sid" ]; then
+    curl -sS -o /dev/null --max-time 8 -b "$jar2" -X POST "$ADDR/api/sessions/$sid/revoke"
+    after=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -b "$jar2" "$ADDR/api/sessions")
+    if [ "$after" = "401" ]; then pass "会话被吊销后立刻不可用"; else bad "吊销后仍能访问（HTTP $after）"; fi
+  else
+    bad "会话台账没有标出当前会话"
+  fi
 fi
 
 echo

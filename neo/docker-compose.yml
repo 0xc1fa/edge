@@ -14,8 +14,10 @@ services:
       # 构建容器同样要用宿主网络：默认 bridge 的 DNS 是 mihomo 的 fake-ip，会拉不到依赖
       network: host
       args:
-        VERSION: "0.1.1"
-    image: neo:0.1.1
+        # 必须与 Makefile 的 VER / IMAGE 一致：三者对不上就会跑着某个旧镜像，
+        # 而它和新代码之间的差异往往要到点了某个新按钮才被发现
+        VERSION: "0.1.9"
+    image: neo:0.1.9
     container_name: neo
     restart: unless-stopped
     # 为什么必须 host 网络：容器要读写宿主的 incus unix socket，
@@ -28,16 +30,43 @@ services:
       NEO_DATA_DIR: /data
       NEO_WEB_DIR: /usr/share/neo/web
       NEO_INTERVAL: 10s
-      NEO_SESSION_TTL: 12h
+      # 会话寿命与空闲上限：留 0 或不设置即长期有效，这是默认。
+      # 想统一收紧就填具体时长（例如 12h），成员也可以在控制台里单独覆盖。
+      # NEO_SESSION_TTL: 12h
+      # NEO_MAX_IDLE: 8h
+      # 一次性登录凭证的默认有效期，够管理员复制链接走一趟 IM
+      NEO_INVITE_TTL: 15m
+      # 前面架了 TLS 反代时才打开下面两个开关：
+      # Secure 让会话 cookie 只在 HTTPS 下发（明文 HTTP 下开了会直接登不进）；
+      # TrustProxy 表示采信 X-Forwarded-For，直曝部署下开着会让来源 IP 可被伪造。
+      # NEO_SECURE_COOKIE: "1"
+      # NEO_TRUST_PROXY: "1"
       # GPU 总量用于规格可售判断；宿主 2 张 4090 中对外只卖 1 张，
       # resources 上报不到卡，所以显式配置
       NEO_GPU_TOTAL: "1"
-      # 想自己指定管理员口令时取消下面一行注释；留空则首次启动自动生成随机口令
-      # NEO_ADMIN_PASSWORD: change-me
+      # 可分配的显卡地址（nvidia-smi 里 pci.bus_id 那列归一化后的形式）。
+      # 容器里没有 nvidia-smi，探测不到卡在哪条总线上，必须显式给。
+      # 只写要交出去的那张，没列进来的卡不会被这个服务碰。
+      NEO_GPU_PCI: "0000:c4:00.0"
+      # 到期巡检周期：到 16:00 自动摘卡。默认 30s，一般不用改
+      # NEO_GPU_SWEEP_INTERVAL: 30s
     volumes:
-      # 只读挂载 socket：第一版只做只读展示，物理上杜绝误操作
-      - /var/lib/incus/unix.socket:/var/lib/incus/unix.socket:ro
-      # 口令哈希与会话密钥落在这里，宿主可直接查看
+      # 宿主时区库挂进容器。
+      #
+      # 为什么非要挂这一条：运行时镜像是 alpine，没有 tzdata，
+      # 于是 `TZ=Asia/Shanghai` 这个名字无从解析 —— Go 与 musl 都会
+      # **静默回落到 UTC**，不报错、日志里也看不出来。
+      # 后果是时段整体错 8 小时：16:00 自动摘卡发生在北京时间半夜零点。
+      #
+      # 二进制里同时 import 了 time/tzdata（自带嵌入时区库）作为第二道保险，
+      # 但配置这一层仍然值得做：换镜像、换运行时、别人接手时，
+      # 「挂时区库」是一眼能看懂的部署约定，而 import 藏在一个文件顶部的注释里。
+      - /usr/share/zoneinfo:/usr/share/zoneinfo:ro
+      # 读写挂载 socket：GPU 挂载/摘卡/重启要往 Incus 发写请求。
+      # 放开的是这三个动作（见 internal/incus/write.go），不是「任意改实例」的口子：
+      # 每个写操作都对应预约台账上的一次状态迁移，且都要管理员权限。
+      - /var/lib/incus/unix.socket:/var/lib/incus/unix.socket:rw
+      # 成员台账 users.json、会话台账 sessions.json 与首发凭证都落在这里
       - ./data:/data
     healthcheck:
       # 用二进制自检，不依赖镜像内是否装了 curl

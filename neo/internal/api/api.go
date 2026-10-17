@@ -6,6 +6,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 
 	"neo/internal/auth"
 	"neo/internal/catalog"
+	"neo/internal/incus"
 	"neo/internal/limit"
 	"neo/internal/recon"
 	"neo/internal/store"
@@ -24,11 +26,22 @@ import (
 
 // Config 是 API 层依赖。
 type Config struct {
-	Version    string
-	Auth       *auth.Auth
-	Recon      *recon.Loop
-	Catalog    catalog.Catalog
-	Apps       *store.AppStore
+	Version string
+	Auth    *auth.Service
+	// Users 是成员/凭证/会话台账。鉴权走 Auth，读写台账走它：
+	// Auth 负责「能不能进」，这里负责「进来的是谁、能不能改」。
+	Users   *store.Access
+	Recon   *recon.Loop
+	Catalog catalog.Catalog
+	Apps    *store.AppStore
+	// GPUS 是 GPU 预约台账；Incus 是执行挂载/摘卡/重启的写通道。
+	// 两者成对出现：没有台账的写操作是不留痕的，没有写通道的台账只是一张愿望清单。
+	GPUS  *store.GPUStore
+	Incus *incus.Client
+	// GPUPCI 是可分配的显卡地址（形如 0000:c4:00.0）。
+	// 必须显式配置：容器里没有 nvidia-smi，探测不到卡在哪条总线上，
+	// 而「通配挂载」会把宿主全部卡都交给一个实例 —— 那不是分配，那是意外。
+	GPUPCI []string
 	// ApplyLimit 限制「成功提交」的单数，保护管理员待办不被灌水
 	ApplyLimit *limit.Limiter
 	// ApplyFailLimit 限制失败尝试次数，防止脚本反复试探主机名是否存在。
@@ -36,10 +49,15 @@ type Config struct {
 	// 而失败也必须有限额，否则 /api/applications 就成了主机名枚举器。
 	ApplyFailLimit *limit.Limiter
 	GPUTotal       int
-	WebDir     string
-	DataDir    string
-	SessionTTL time.Duration
-	MaxAge     time.Duration // 判定健康的最大对账延迟
+	WebDir         string
+	DataDir        string
+	MaxAge         time.Duration // 判定健康的最大对账延迟
+	// SecureCookie 只有前面架了 TLS 才该打开：明文 HTTP 下发带 Secure 的 cookie，
+	// 浏览器会直接丢弃，结果是谁也登不进来。NEO_SECURE_COOKIE=1 显式开启。
+	SecureCookie bool
+	// TrustProxy 决定是否采信 X-Forwarded-For。默认关：
+	// 直曝部署下这个头是客户端自己填的，登录限流的 key 与台账里的来源 IP 会一起失真。
+	TrustProxy bool
 }
 
 // Server 是 HTTP 入口。
@@ -52,6 +70,7 @@ type Server struct {
 func New(cfg Config) *Server {
 	s := &Server{cfg: cfg, mux: http.NewServeMux()}
 	s.mux.HandleFunc("GET /api/health", s.handleHealth)
+	s.mux.HandleFunc("POST /api/auth/redeem", s.handleRedeem)
 	s.mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	s.mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
 	s.mux.HandleFunc("GET /api/session", s.handleSession)
@@ -61,14 +80,37 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("POST /api/applications", s.handleApply)
 	s.mux.HandleFunc("GET /api/applications/{id}", s.handleApplicationGet)
 
-	// 管理员区：查看全部申请与处理动作
-	s.mux.HandleFunc("GET /api/applications", s.handleApplications)
-	s.mux.HandleFunc("POST /api/applications/{id}/decision", s.handleDecision)
-
+	// 登录可见区：实例与容量属于「平台在跑什么」，成员也能看
 	s.mux.HandleFunc("GET /api/instances", s.handleInstances)
 	s.mux.HandleFunc("GET /api/instances/{name}", s.handleInstance)
 	s.mux.HandleFunc("GET /api/series/{name}", s.handleSeries)
 	s.mux.HandleFunc("GET /api/capacity", s.handleCapacity)
+
+	// 管理员区：处理申请，以及管人 —— 成员、登录凭证、会话都在这里
+	s.mux.HandleFunc("GET /api/applications", s.handleApplications)
+	s.mux.HandleFunc("POST /api/applications/{id}/decision", s.handleDecision)
+
+	// GPU 预约：谁都能看排期、都能申请；审批与挂载只有管理员
+	s.mux.HandleFunc("GET /api/gpu-bookings", s.handleGPUList)
+	s.mux.HandleFunc("POST /api/gpu-bookings", s.handleGPUApply)
+	s.mux.HandleFunc("POST /api/gpu-bookings/{id}/decision", s.handleGPUDecide)
+	s.mux.HandleFunc("POST /api/gpu-bookings/{id}/attach", s.handleGPUAttach)
+	s.mux.HandleFunc("POST /api/gpu-bookings/{id}/detach", s.handleGPUDetach)
+	s.mux.HandleFunc("POST /api/gpu-bookings/{id}/cancel", s.handleGPUCancel)
+	s.mux.HandleFunc("POST /api/instances/{name}/restart", s.handleInstanceRestart)
+	s.mux.HandleFunc("GET /api/users", s.handleUsers)
+	s.mux.HandleFunc("POST /api/users", s.handleUserCreate)
+	s.mux.HandleFunc("PATCH /api/users/{id}", s.handleUserUpdate)
+	s.mux.HandleFunc("DELETE /api/users/{id}", s.handleUserDelete)
+	s.mux.HandleFunc("POST /api/users/{id}/invite", s.handleInviteCreate)
+	s.mux.HandleFunc("POST /api/users/{id}/revoke-sessions", s.handleUserRevokeSessions)
+	s.mux.HandleFunc("GET /api/invites", s.handleInvites)
+	s.mux.HandleFunc("POST /api/invites", s.handleInviteIssue)
+	s.mux.HandleFunc("POST /api/invites/{token}/revoke", s.handleInviteRevoke)
+	s.mux.HandleFunc("GET /api/sessions", s.handleSessions)
+	s.mux.HandleFunc("POST /api/sessions/{id}/revoke", s.handleSessionRevoke)
+	s.mux.HandleFunc("DELETE /api/sessions/{id}", s.handleSessionDelete)
+
 	s.mux.HandleFunc("/", s.handleStatic)
 	return s
 }
@@ -78,21 +120,60 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	if strings.HasPrefix(r.URL.Path, "/api/") {
 		w.Header().Set("Cache-Control", "no-store")
-		if !isPublic(r.Method, r.URL.Path) && !s.authorized(r) {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "未登录"})
+		if !s.gate(w, r) {
 			return
 		}
 	}
 	s.mux.ServeHTTP(w, r)
 }
 
-// isPublic 列出无需鉴权的接口。判定粒度细到方法而非路径：
-// GET /api/applications 是管理员看全量，POST 才是匿名提交，同路径不同权限。
+// level 是接口的访问门槛，逐递进：每一级隐含比它低的那一级。
+type level int
+
+const (
+	levelAny   level = iota // 公开，不校验
+	levelUser               // 有有效会话即可
+	levelAdmin              // 必须管理员
+)
+
+// gate 是唯一一道访问控制关卡。通过返回 true，否则已经写好响应并返回 false。
+//
+// 判定粒度是「方法 + 路径 + 角色」而不是只看路径：
+// GET /api/applications 是管理员看全量、POST 才是匿名提交，同路径不同门槛。
+func (s *Server) gate(w http.ResponseWriter, r *http.Request) bool {
+	need := requiredLevel(r.Method, r.URL.Path)
+	if need == levelAny {
+		return true
+	}
+	view, state := s.current(r)
+	if state != store.SessionValid {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": state.String()})
+		return false
+	}
+	if need == levelAdmin && view.Role != store.RoleAdmin {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "需要管理员权限"})
+		return false
+	}
+	return true
+}
+
+// current 取出本次请求的会话。顺带完成心跳 —— 见 store.Access.Resolve。
+func (s *Server) current(r *http.Request) (store.SessionView, store.SessionState) {
+	c, err := r.Cookie(auth.CookieName)
+	if err != nil {
+		return store.SessionView{}, store.SessionMissing
+	}
+	return s.cfg.Auth.Resolve(c.Value)
+}
+
+// isPublic 列出无需鉴权的接口，是 requiredLevel 的第一道分支。
+// 保留这个函数是因为它有专门的收口测试，任何人误放开一个写动作都会被拦下。
 func isPublic(method, p string) bool {
 	switch p {
 	case "/api/health", "/api/session":
 		return true
-	case "/api/auth/login":
+	// 两条登录入口都必须匿名可调：此刻还没有会话可言
+	case "/api/auth/redeem", "/api/auth/login":
 		return method == http.MethodPost
 	case "/api/catalog":
 		return method == http.MethodGet
@@ -106,24 +187,44 @@ func isPublic(method, p string) bool {
 	return false
 }
 
-func (s *Server) authorized(r *http.Request) bool {
-	c, err := r.Cookie(auth.CookieName)
-	if err != nil || c.Value == "" {
-		return false
+// requiredLevel 在 isPublic 之上再分「登录即可」与「必须管理员」。
+// 管人、发证、踢会话天然是管理员动作；看实例与查容量，成员同享。
+func requiredLevel(method, p string) level {
+	if isPublic(method, p) {
+		return levelAny
 	}
-	claims, ok := s.cfg.Auth.Verify(c.Value)
-	return ok && claims.Role == auth.RoleAdmin
+	switch {
+	case strings.HasSuffix(p, "/decision"):
+		return levelAdmin
+	case strings.HasPrefix(p, "/api/users"),
+		strings.HasPrefix(p, "/api/invites"),
+		strings.HasPrefix(p, "/api/sessions"):
+		return levelAdmin
+	case p == "/api/applications":
+		return levelAdmin
+	// 动宿主的动作一律只有管理员：挂卡、摘卡、审批、重启
+	case strings.HasPrefix(p, "/api/instances/") && strings.HasSuffix(p, "/restart"):
+		return levelAdmin
+	// 预约本体分两级：看排期与提交申请是登录即可，
+	// 审批与挂载摘卡必须是管理员 —— 这与前端隐藏按钮是两道独立的关卡
+	case strings.HasPrefix(p, "/api/gpu-bookings/") &&
+		(strings.HasSuffix(p, "/decision") ||
+			strings.HasSuffix(p, "/attach") ||
+			strings.HasSuffix(p, "/detach")):
+		return levelAdmin
+	}
+	return levelUser
 }
 
 // ---------------------------------------------------------------- 健康
 
 type healthResp struct {
-	OK               bool   `json:"ok"`
-	Version          string `json:"version"`
-	IncusReachable   bool   `json:"incus_reachable"`
-	InstanceCount    int    `json:"instance_count"`
-	LastReconcileAgeMs int64 `json:"last_reconcile_age_ms"`
-	Error            string `json:"error,omitempty"`
+	OK                 bool   `json:"ok"`
+	Version            string `json:"version"`
+	IncusReachable     bool   `json:"incus_reachable"`
+	InstanceCount      int    `json:"instance_count"`
+	LastReconcileAgeMs int64  `json:"last_reconcile_age_ms"`
+	Error              string `json:"error,omitempty"`
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -154,52 +255,182 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 // ---------------------------------------------------------------- 认证
 
-func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	src := clientIP(r)
-	if ok, retry := s.cfg.Auth.Limiter().Allow(src); !ok {
-		w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())+1))
-		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "尝试过于频繁，请稍后再试"})
-		return
-	}
+// redeemRequest 是登录页提交的兑换请求。
+// device 由浏览器指纹折算而来，用途只有一个：让管理员在会话台账里分清哪台是哪台。
+type redeemRequest struct {
+	Token  string `json:"token"`
+	Device string `json:"device"`
+}
 
-	var req struct {
-		Password string `json:"password"`
-	}
+// loginRequest 是管理员口令登录的请求体。
+// 口令不 trim：前后空格本身可能是口令的一部分，
+// 但空串与纯空格不该放行，那通常意味着前端没接到输入。
+type loginRequest struct {
+	Password string `json:"password"`
+	Device   string `json:"device"`
+}
+
+type userBrief struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Role string `json:"role"`
+}
+
+type sessionBrief struct {
+	ID         string `json:"id"`
+	CreatedAt  string `json:"created_at"`
+	LastSeenAt string `json:"last_seen_at"`
+	ExpiresAt  string `json:"expires_at"`
+	MaxIdle    string `json:"max_idle"`
+	RemainSec  int64  `json:"remain_seconds"`
+	Device     string `json:"device"`
+}
+
+type defaultsBrief struct {
+	TokenTTL string `json:"token_ttl"`
+	MaxIdle  string `json:"max_idle"`
+}
+
+// handleRedeem 把一次性凭证换成会话。
+//
+// 用 POST 而不是 GET：凭证在 URL 里会被浏览器预加载、写进历史与 Referer，
+// 转发给同事的链接等于把凭据送给了每一个中间节点。流程因此分成两步 ——
+// 链接把使用者送到登录页，页面再主动 POST 兑换。
+func (s *Server) handleRedeem(w http.ResponseWriter, r *http.Request) {
+	var req redeemRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<12)).Decode(&req); err != nil {
-		s.cfg.Auth.Limiter().Record(src)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请求格式不正确"})
 		return
 	}
-	if req.Password == "" || !s.cfg.Auth.CheckPassword(req.Password) {
-		s.cfg.Auth.Limiter().Record(src)
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "口令不正确"})
+	req.Token = strings.TrimSpace(req.Token)
+	if req.Token == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少登录凭证"})
 		return
 	}
 
-	tok, err := s.cfg.Auth.Issue(auth.RoleAdmin, s.cfg.SessionTTL)
+	ip := s.clientIP(r)
+	user, sess, err := s.cfg.Auth.Redeem(req.Token, ip, clamp(r.UserAgent(), 240), clamp(req.Device, 64))
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "签发会话失败"})
+		var th *auth.Throttled
+		if errors.As(err, &th) {
+			w.Header().Set("Retry-After", strconv.Itoa(int(th.Retry.Seconds())+1))
+			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": err.Error()})
+			return
+		}
+		// 失败原因不分流：凭证不存在、已用过、已过期、成员被停用，
+		// 对外一律是同一句「无效」，否则这里就成了探测凭证有效性的地方。
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "登录凭证无效或已失效"})
 		return
 	}
-	s.cfg.Auth.Limiter().Reset(src)
-	// 明文口令文件不再在登录时销毁：口令文件的留存与删除交由管理员自行处理，
-	// 方便其在需要时随时查看，而不是首次登录就被动销毁。
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     auth.CookieName,
-		Value:    tok,
-		Path:     "/",
-		MaxAge:   int(s.cfg.SessionTTL.Seconds()),
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
+	s.setSessionCookie(w, sess)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"role": auth.RoleAdmin,
-		"ttl":  int(s.cfg.SessionTTL.Seconds()),
+		"user":    userBrief{ID: user.ID, Name: user.Name, Role: user.Role},
+		"session": briefOf(sess),
+	})
+}
+
+// handleLogin 是管理员的口令登录。
+//
+// 控制台只认这一种口令：能用口令进来的只有管理员。
+// 其他人（租户、同事）没有口令，他们只能拿管理员签发的链接进来（handleRedeem）。
+// 因此这里不做「按口令查出是哪个人」这一步 —— 口令只对应管理员这一个身份，
+// 而具体是谁在用，靠会话台账上的设备与时间分辨。
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	var req loginRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<12)).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请求格式不正确"})
+		return
+	}
+	if req.Password == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少口令"})
+		return
+	}
+
+	ip := s.clientIP(r)
+	user, sess, err := s.cfg.Auth.Login(req.Password, ip, clamp(r.UserAgent(), 240), clamp(req.Device, 64))
+	if err != nil {
+		var th *auth.Throttled
+		if errors.As(err, &th) {
+			w.Header().Set("Retry-After", strconv.Itoa(int(th.Retry.Seconds())+1))
+			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		return
+	}
+
+	s.setSessionCookie(w, sess)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user":    userBrief{ID: user.ID, Name: user.Name, Role: user.Role},
+		"session": briefOf(sess),
 	})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if c, err := r.Cookie(auth.CookieName); err == nil {
+		s.cfg.Auth.Logout(c.Value)
+	}
+	s.clearSessionCookie(w)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "已退出"})
+}
+
+// handleSession 是前端每次进入页面都要问的一句「我是谁」。
+//
+// 它是公开的：未登录也要能拿到应答，才会知道该显示登录页。
+// 附带效果是心跳 —— 登录着的人每隔一段时间拉它，会话的最后活跃时间就跟着走，
+// 会话台账上的「在线 / 离线」因此不需要额外的心跳接口。
+func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
+	ttl, idle := s.cfg.Auth.Defaults()
+	resp := map[string]any{
+		"authenticated": false,
+		"role":          "",
+		"defaults":      defaultsBrief{TokenTTL: durationText(ttl), MaxIdle: durationText(idle)},
+	}
+	view, state := s.current(r)
+	if state != store.SessionValid {
+		if state != store.SessionMissing {
+			resp["reason"] = state.String()
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+	resp["authenticated"] = true
+	resp["role"] = view.Role
+	resp["user"] = userBrief{ID: view.UserID, Name: view.UserName, Role: view.Role}
+	resp["session"] = sessionBrief{
+		ID:         view.ID,
+		CreatedAt:  view.CreatedAt,
+		LastSeenAt: view.LastSeenAt,
+		ExpiresAt:  view.ExpiresAt,
+		MaxIdle:    view.MaxIdle,
+		RemainSec:  view.RemainSec,
+		Device:     view.Device,
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// setSessionCookie 把会话 ID 写进 cookie。
+// MaxAge 与服务端记录的到期时间对齐：浏览器不必保留一条到时间已经作废的 cookie。
+func (s *Server) setSessionCookie(w http.ResponseWriter, sess store.Session) {
+	age := int(time.Until(parseRFC3339(sess.ExpiresAt)).Seconds())
+	if age < 0 {
+		age = 0
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth.CookieName,
+		Value:    sess.ID,
+		Path:     "/",
+		MaxAge:   age,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		// Secure 只在 HTTPS 下打开：本机直曝的场景还要能登得进去。
+		// 一旦前面挂了 TLS，务必设 NEO_SECURE_COOKIE=1 —— 明文 HTTP 下发会话等于把它半公开。
+		Secure: s.cfg.SecureCookie,
+	})
+}
+
+func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     auth.CookieName,
 		Value:    "",
@@ -207,17 +438,39 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
+		Secure:   s.cfg.SecureCookie,
 	})
-	writeJSON(w, http.StatusOK, map[string]string{"status": "已退出"})
 }
 
-func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
-	authed := s.authorized(r)
-	resp := map[string]any{"authenticated": authed, "role": ""}
-	if authed {
-		resp["role"] = auth.RoleAdmin
+func briefOf(s store.Session) sessionBrief {
+	// -1 表示长期有效，与 0（此刻到期）必须是两个值：
+	// 前端要能把「没有到期这回事」和「马上到期」区分开。
+	remain := int64(-1)
+	if exp := parseRFC3339(s.ExpiresAt); !exp.IsZero() {
+		remain = int64(time.Until(exp).Seconds())
+		if remain < 0 {
+			remain = 0
+		}
 	}
-	writeJSON(w, http.StatusOK, resp)
+	return sessionBrief{
+		ID:         s.ID,
+		CreatedAt:  s.CreatedAt,
+		LastSeenAt: s.LastSeenAt,
+		ExpiresAt:  s.ExpiresAt,
+		MaxIdle:    s.MaxIdle,
+		RemainSec:  remain,
+		Device:     s.Device,
+	}
+}
+
+// clamp 截断来自客户端的自由文本：UA 与设备标签都要显示进台账，
+// 不设上限的话，一条超长字符串就能把表格撑坏。
+func clamp(v string, n int) string {
+	v = strings.TrimSpace(v)
+	if len([]rune(v)) > n {
+		return string([]rune(v)[:n])
+	}
+	return v
 }
 
 // ---------------------------------------------------------------- 实例
@@ -257,9 +510,9 @@ type capacityResp struct {
 		Allocated int `json:"allocated"`
 	} `json:"cpu"`
 	Memory struct {
-		Total      int64 `json:"total"`
-		Used       int64 `json:"used"`
-		Allocated  int64 `json:"allocated"`
+		Total     int64 `json:"total"`
+		Used      int64 `json:"used"`
+		Allocated int64 `json:"allocated"`
 	} `json:"memory"`
 	Disk struct {
 		Allocated int64 `json:"allocated"`
@@ -363,13 +616,26 @@ func writeHTML(w http.ResponseWriter, code int, body string) {
 	_, _ = w.Write([]byte(body))
 }
 
-func clientIP(r *http.Request) string {
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		return strings.TrimSpace(strings.Split(fwd, ",")[0])
+// clientIP 取请求来源。只有显式声明了信任反向代理时才读 X-Forwarded-For，
+// 否则一律以 TCP 连接的对端为准 —— 会话台账上的 IP 是管理员做判断的依据，
+// 它必须是可以拿去问「这台机器是谁」的那种地址，而不是客户端随口说的一个字符串。
+func (s *Server) clientIP(r *http.Request) string {
+	if s.cfg.TrustProxy {
+		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+			return strings.TrimSpace(strings.Split(fwd, ",")[0])
+		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+func parseRFC3339(s string) time.Time {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }

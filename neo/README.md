@@ -17,7 +17,8 @@
 | 入口 | 面向 | 鉴权 | 能看到 |
 | --- | --- | --- | --- |
 | `#/` 产品主页 | 任何拿到地址的人 | 无 | 售卖目录、提交申请、凭回执查自己的进度 |
-| `#/admin` 管理员控制台 | 后台验证过的人 | 会话 cookie | 实例清单、全部申请、申请人的联系方式与公钥 |
+| `#/admin` 控制台 | 管理员 | 口令 → 会话 cookie | 实例清单、全部申请、申请人的联系方式与公钥、会话台账 |
+| `#/login?token=` | 被批过的人 | 凭链接兑换 | 同上，但看不到会话台账（那属于管理员） |
 
 **匿名可用 ≠ 匿名可读。** `/api/instances` 与 `GET /api/applications` 一律 401，
 只有 `POST /api/applications`（提交）与 `GET /api/applications/{id}`（凭回执查自己）开放。
@@ -31,10 +32,10 @@ cmd/neo/       入口：serve | probe | version
 internal/incus/      唯一的外部依赖点（REST over unix socket）+ golden fixture
 internal/recon/      10s 一轮对账，产出快照与近 30 分钟采样
 internal/api/        REST + 静态托管，含访问控制水位判定
-internal/auth/       单管理员：口令校验通过即平台管理员
-internal/limit/      滑动窗口限流（登录与匿名提交共用）
+internal/auth/       一次性登录凭证 → 会话；会话的有效期与吊销
+internal/limit/      滑动窗口限流（凭证兑换与匿名提交共用）
 internal/catalog/    售卖目录：标准实例 + GPU 附加项 + 镜像 + 可售判断
-internal/store/      口令哈希、会话密钥、开通申请台账
+internal/store/      成员 / 凭证 / 会话台账、开通申请台账
 web/                 React 18 + Vite + TypeScript（严格模式）+ TDesign React
 ```
 
@@ -56,12 +57,12 @@ web/                 React 18 + Vite + TypeScript（严格模式）+ TDesign Rea
 | --- | --- |
 | 端口 | `5902`（5901 属 miner-obs/solar） |
 | compose 工程名 | `edge-vm-console`（显式指定，避免误删同名栈） |
-| 容器名 / 镜像 | `neo` / `neo:0.1.0` |
+| 容器名 / 镜像 | `neo` / `neo:0.1.7` |
 | 网络 | `network_mode: host`（bridge 的 DNS 会被 TUN 劫成 fake-ip） |
-| Incus socket | `/var/lib/incus/unix.socket`，只读挂载 |
-| 数据目录 | `./data`（宿主可读；含 `secrets.json` 与 `applications.json`） |
+| Incus socket | `/var/lib/incus/unix.socket`，**读写**挂载（GPU 挂载/摘卡/重启要写） |
+| 数据目录 | `./data`（含 `admin-password.txt`、`users.json`、`sessions.json`、`applications.json`） |
 | 采集间隔 | 10s；健康容忍窗口 40s |
-| 会话 | cookie `vmc_session`，12h，HttpOnly + SameSite=Lax |
+| 会话 | cookie `vmc_session` 只存会话 ID，默认长期有效，HttpOnly + SameSite=Lax |
 | GPU 总量 | `NEO_GPU_TOTAL=2`（resources 拿不到卡信息，做成配置而非自动探测） |
 | 匿名成功单 | 同一来源 1 小时 5 单（保护管理员待办） |
 | 匿名失败尝试 | 同一来源 1 小时 30 次（防止脚本枚举主机名） |
@@ -80,15 +81,71 @@ make up/down  # 启停服务
 make smoke    # 冒烟：健康 / 401 收口 / 登录 / 与 incus list 逐字段比对
 ```
 
-## 登录
+## 登录：管理员有口令，其他人没有
 
-`#/admin` 是唯一需要登录的入口。首次启动自动生成管理员口令并写入
-`data/bootstrap-password.txt`，同时打印到日志（`make token` 可再次查看）。
+**控制台只有管理员能进，用的是口令。** 口令明文落在 `data/admin-password.txt`，
+`make password` 可以看，`make password RESET=1` 换一个，也可以用
+`NEO_ADMIN_PASSWORD` 自己指定。忘了就 `cat` 出来 —— 不存在「找回密码」这条链路。
 
-该口令文件由管理员自行留存或删除，登录后不再自动销毁。
-需要重设时：`docker compose down && rm -f data/secrets.json && docker compose up -d`。
+**其他人（租户、同事）没有口令。** 他们能不能进来，取决于管理员有没有批过一条链接：在「会话」页点签发、写下名字、把链接发过去，点开即完成登录。没批过的人停
+留在登录页上，看不到任何实例信息。
 
-想固定口令：在 `docker-compose.yml` 里放开 `NEO_ADMIN_PASSWORD`。
+```
+管理员在「会话」页点签发 → 写个名字 → 复制链接发给使用者 → 点开即完成登录
+```
+
+链接 32 字节随机、默认 1 小时有效、**兑换一次即废**。
+名字只是台账上的一个标签，用来回答「这条会话是谁的」——
+它不是账号，也不需要建档：同名复用，不同名顺手建一个。
+
+会话落在服务端台账里，于是它变成可管理的对象：
+管理员能看见谁在哪台机器上、什么时候来的，能单独踢掉某一条，也能直接删掉。
+删掉之后那条链接立刻不能再进 —— 访问权收回是当下的事，不是等它过期。
+
+| 入口 | 说明 |
+| --- | --- |
+| `#/admin` / `#/login` | 控制台入口；没有会话时停在口令页 |
+| `#/login?token=xxx` | 管理员批过的访问链接，点开即登录 |
+
+把自己锁在门外时（比如把最后一个管理员删了），用终端这两条后路：
+
+```bash
+make password            # 看管理员口令（就是 data/admin-password.txt 的内容）
+make password RESET=1    # 换一个口令
+make invite              # 签发一条访问链接
+```
+
+> 注意：这两条命令直接写数据目录下的台账文件，适用于「服务没起来 / 起不来」的情况。
+> 正常运行期间请在页面上签发。
+
+## GPU：按天预约，9 点到 16 点
+
+一张卡对外只卖 1 份，时段固定为每天 09:00–16:00（注意这是 **7 小时**，不是 8 小时 ——
+需求里两个数对不上，这里按明确的时刻实现）。改时长只动
+`internal/store/gpu.go` 里 `GPUWindowStartHour` / `GPUWindowEndHour` 两个常量。
+
+```
+使用者在实例列表点「申请」→ 选日期、填用途 → 待批准
+管理员在「GPU」页批准 → 点「挂载」→ 卡插到实例上
+服务端到 16:00 自动摘卡并写回台账（管理员也可提前手动摘）
+```
+
+三条要点：
+
+- **批准和挂载是两步**。批准只是同意，插卡是执行。合起来做的话，
+  一次设备层的失败（卡被占、实例已删）会让审批结论本身变得含糊。
+- **待处理的申请不占额度**。同一天可以有多个人排着，批准才互斥 ——
+  否则第一个人被驳回时，第二个人的申请早就白白过期了。提交时会提示「已有 N 人排队」。
+- **不自动重启**。这台机器上容器里的 `/dev/nvidia*` 通常要重启实例才出现，
+  挂载成功后页面会问要不要重启，由管理员按下。自动重启会打断实例上正在跑的东西。
+
+挂载用的是 `NEO_GPU_PCI` 里配置的地址（compose 里默认 `0000:c4:00.0`，
+即两张 4090 中的第二张；没配置时挂载接口会明确拒绝而不是通配挂全部卡）。
+
+> 时区提醒：时段按服务所在时区算。运行时镜像（alpine）没有 tzdata，
+> 因此 `cmd/neo/main.go` 里 `import _ "time/tzdata"` 是必需的 ——
+> 少了它 `TZ=Asia/Shanghai` 会静默失效回落到 UTC，表现是半夜才摘卡。
+> 启动日志里的「时区 / GPU 时段」两行就是用来人工核对这件事的。
 
 ## 申请流转（当前的边界）
 
@@ -161,7 +218,7 @@ RTX 4090 库存 2 张（实测 `nvidia-smi -L`）；RTX PRO 6000 库存 0，对�
 ```text
 src/td.ts            按需出口：基础件 + 布局件，只注册真正用到的组件
 src/main.tsx         TDesign 样式排在自定义样式之前，主色由 --td-brand-color 覆盖
-src/App.tsx          三个面：#/ 产品页、#/apply 申请页、#/admin 控制台（懒加载）
+src/App.tsx          四个面：#/ 产品页、#/apply 申请页、#/login 登录页、#/admin 控制台（懒加载）
 src/styles.css       只剩页面容器与产品卡；组件级样式已删除，避免两套圆角/高度并存
 ```
 
@@ -175,7 +232,10 @@ src/styles.css       只剩页面容器与产品卡；组件级样式已删除�
 #/apply   申请页   步骤条 + 表单（4 项）+ 右侧配置清单；提交后整页换成回执
    │
    ▼
-#/admin   控制台   登录 → 实例（表格 + 抽屉）/ 申请审批（表格）
+#/login   登录页   凭证链接点开即兑换（也可手粘），用完便不能再出现第二次
+   │
+   ▼
+#/admin   控制台   实例 / 申请审批 / 在线会话（会话页兼管签发访问链接，仅管理员）
 ```
 
 选型和下单本来就是两件事：产品页不塞表单，表单才能占满整屏、也才配得上一个明确的提交动作。

@@ -79,7 +79,11 @@ type View struct {
 	PID           int64     `json:"pid"`
 	Processes     int64     `json:"processes"`
 	CPUSeconds    float64   `json:"cpu_seconds"`
-	MemUsage      int64     `json:"mem_usage"`
+	// CPUPercent 是当前 CPU 占用百分比，由对账层用两次采样差算出后填进来。
+	// 放在 View 上而不是前端自己算：累计秒数（cpu_seconds）是单调递增的，
+	// 单次取值推不出瞬时占用，必须由持有上一次采样的那一层来算。
+	CPUPercent    float64 `json:"cpu_percent"`
+	MemUsage      int64   `json:"mem_usage"`
 	MemPeak       int64     `json:"mem_peak"`
 	MemTotal      int64     `json:"mem_total"`
 	MemPercent    int       `json:"mem_percent"`

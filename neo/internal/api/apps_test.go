@@ -179,8 +179,8 @@ func TestIsPublic(t *testing.T) {
 	}{
 		{"GET", "/api/health", true},
 		{"GET", "/api/session", true},
-		{"POST", "/api/auth/login", true},
-		{"GET", "/api/auth/login", false},
+		{"POST", "/api/auth/redeem", true},
+		{"GET", "/api/auth/redeem", false},
 		{"GET", "/api/catalog", true},
 		{"POST", "/api/applications", true}, // 匿名提交
 		{"GET", "/api/applications", false}, // 管理员全量列表
@@ -192,6 +192,58 @@ func TestIsPublic(t *testing.T) {
 	for _, c := range cases {
 		if got := isPublic(c.method, c.path); got != c.want {
 			t.Errorf("isPublic(%s %s) = %v, 想 %v", c.method, c.path, got, c.want)
+		}
+	}
+}
+
+// TestRequiredLevel 守住「登录即可」与「必须管理员」的分界。
+//
+// 无口令登录引入成员角色之后，鉴权不再是一刀切：看实例是成员就能做的事，
+// 管人、发证、踢会话不是。这里每多一条新接口，都应该有一条对应的断言，
+// 否则某天把 GET /api/sessions 划给普通成员，控制台上的会话台账就向所有人敞开了。
+func TestRequiredLevel(t *testing.T) {
+	cases := []struct {
+		method, path string
+		want         level
+	}{
+		{"GET", "/api/health", levelAny},
+		{"GET", "/api/session", levelAny},
+		{"POST", "/api/auth/redeem", levelAny},
+		{"POST", "/api/auth/login", levelAny},
+		{"GET", "/api/catalog", levelAny},
+		{"POST", "/api/applications", levelAny},
+		{"GET", "/api/applications/AP-20261010-7XK4", levelAny},
+
+		{"GET", "/api/instances", levelUser},
+		{"GET", "/api/instances/dev01", levelUser},
+		{"GET", "/api/series/dev01", levelUser},
+		{"GET", "/api/capacity", levelUser},
+
+		{"GET", "/api/applications", levelAdmin},
+		{"POST", "/api/applications/AP-20261010-7XK4/decision", levelAdmin},
+		{"GET", "/api/users", levelAdmin},
+		{"POST", "/api/users", levelAdmin},
+		{"PATCH", "/api/users/u_1a2b3c", levelAdmin},
+		{"DELETE", "/api/users/u_1a2b3c", levelAdmin},
+		{"POST", "/api/users/u_1a2b3c/invite", levelAdmin},
+		{"POST", "/api/users/u_1a2b3c/revoke-sessions", levelAdmin},
+		{"GET", "/api/invites", levelAdmin},
+
+		// GPU 预约：排期谁都能看、谁都能申请；动宿主的动作只有管理员
+		{"GET", "/api/gpu-bookings", levelUser},
+		{"POST", "/api/gpu-bookings", levelUser},
+		{"POST", "/api/gpu-bookings/GU-20261017-7XK4/decision", levelAdmin},
+		{"POST", "/api/gpu-bookings/GU-20261017-7XK4/attach", levelAdmin},
+		{"POST", "/api/gpu-bookings/GU-20261017-7XK4/detach", levelAdmin},
+		{"POST", "/api/gpu-bookings/GU-20261017-7XK4/cancel", levelUser},
+		{"POST", "/api/instances/tenant01/restart", levelAdmin},
+		{"POST", "/api/invites/abc123/revoke", levelAdmin},
+		{"GET", "/api/sessions", levelAdmin},
+		{"POST", "/api/sessions/abc123/revoke", levelAdmin},
+	}
+	for _, c := range cases {
+		if got := requiredLevel(c.method, c.path); got != c.want {
+			t.Errorf("requiredLevel(%s %s) = %v, 想 %v", c.method, c.path, got, c.want)
 		}
 	}
 }
