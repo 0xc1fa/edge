@@ -34,7 +34,10 @@ build:
 	   CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.Version=$(VER)" -o bin/neo ./cmd/neo'
 
 web:
-	docker run --rm --network host --dns 223.5.5.5 -v "$(NODE_MNT)" -v "$(CURDIR)/web":/app -w /app $(GO_IMAGE) bash -c \
+	# logo/ 必须一并挂进去：ui.tsx 用 ../../../logo/logo.svg 引用仓库根的标识，
+	# 容器内对应 /logo —— 与 Dockerfile 里 COPY logo /logo 的位置保持一致。
+	docker run --rm --network host --dns 223.5.5.5 -v "$(NODE_MNT)" \
+	  -v "$(CURDIR)/web":/app -v "$(CURDIR)/logo":/logo:ro -w /app $(GO_IMAGE) bash -c \
 	  'tar -C /usr/local --strip-components=1 -xf /build/node.tar && \
 	   npm install --no-audit --no-fund --registry=https://registry.npmmirror.com && npm run build'
 

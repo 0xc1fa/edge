@@ -8,6 +8,7 @@ import type {
   GPUBooking,
   GPUOverview,
   Health,
+  InstanceOwner,
   InstanceView,
   Invite,
   Sample,
@@ -224,6 +225,16 @@ export const api = {
     }),
 
   /**
+   * 彻底抹掉台账里的一条记录。
+   * 与取消不同：取消留痕，这个连痕一起抹 —— 用于清掉测试与误填的假数据。
+   * 卡还挂着时服务端会拒：先摘卡，再删。
+   */
+  deleteGPU: (id: string) =>
+    request<{ booking: GPUBooking; hint: string }>(`/api/gpu-bookings/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+
+  /**
    * 重启实例。
    * 这是唯一会打断实例上正在跑的事情的动作，所以它单独成一个按钮。
    */
@@ -232,4 +243,55 @@ export const api = {
       `/api/instances/${encodeURIComponent(name)}/restart`,
       { method: 'POST', body: JSON.stringify({ force }) },
     ),
+
+  // ------------------------------------------------------------ 自己实例的操作
+
+  /**
+   * 开机 / 关机 / 重启。
+   * 与上面的 restartInstance 是两回事：那个只有管理员能按（不带归属判断），
+   * 这个登录就能到达，但服务端还会判「这台机器是不是你的」。
+   */
+  powerInstance: (name: string, action: 'start' | 'stop' | 'restart', force = false) =>
+    request<{ status: string; instance: string; action: string; hint: string }>(
+      `/api/instances/${encodeURIComponent(name)}/power`,
+      { method: 'POST', body: JSON.stringify({ action, force }) },
+    ),
+
+  /** 重置实例的 root 登录口令。走容器内 chpasswd，不需要知道旧口令。 */
+  resetPassword: (name: string, password: string) =>
+    request<{ status: string; hint: string }>(
+      `/api/instances/${encodeURIComponent(name)}/password`,
+      { method: 'POST', body: JSON.stringify({ password }) },
+    ),
+
+  /**
+   * 网页终端的 WebSocket 地址。
+   *
+   * 同源地址，浏览器会自动带上会话 cookie —— 服务端据此判断
+   * 「你是谁、这台机器是不是你的」。这里不拼任何令牌参数：
+   * 把凭证写进 URL 意味着它会出现在浏览记录、代理日志和 Referer 里。
+   */
+  shellSocket: (name: string) => {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${window.location.host}/api/instances/${encodeURIComponent(name)}/shell`;
+  },
+
+  // ------------------------------------------------------------ 归属分配（管理员）
+
+  /** 把一台实例分给某个成员。分配之后对方刷新即可使用终端、口令与电源。 */
+  assignInstance: (name: string, owner: string) =>
+    request<{ instance: string; owner: string; status: string; hint: string }>(
+      `/api/instances/${encodeURIComponent(name)}/assign`,
+      { method: 'POST', body: JSON.stringify({ owner }) },
+    ),
+
+  /** 解除归属：这台机器回到「未登记属主」，租户侧操作入口随之关闭。 */
+  unassignInstance: (name: string) =>
+    request<{ instance: string; status: string; hint: string }>(
+      `/api/instances/${encodeURIComponent(name)}/assign`,
+      { method: 'DELETE' },
+    ),
+
+  /** 全部分配记录，供管理员核对「谁手里有哪些机器」。 */
+  instanceOwners: () => request<{ owners: InstanceOwner[] }>('/api/instance-owners'),
 };

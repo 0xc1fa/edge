@@ -34,6 +34,9 @@ type Config struct {
 	Recon   *recon.Loop
 	Catalog catalog.Catalog
 	Apps    *store.AppStore
+	// Owners 是实例归属台账：哪台机器归谁。为空时归属只能从申请台账推导，
+	// 于是宿主上手工建的实例对租户而言永远点不动。
+	Owners *store.OwnerStore
 	// GPUS 是 GPU 预约台账；Incus 是执行挂载/摘卡/重启的写通道。
 	// 两者成对出现：没有台账的写操作是不留痕的，没有写通道的台账只是一张愿望清单。
 	GPUS  *store.GPUStore
@@ -86,6 +89,18 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/series/{name}", s.handleSeries)
 	s.mux.HandleFunc("GET /api/capacity", s.handleCapacity)
 
+	// 对自己名下的实例能做的事：网页终端、改口令、开关机重启。
+	// 登录即可到达，但「这台机器是不是你的」在 handler 里判 ——
+	// 归属是业务口径，路由层看不出来。
+	s.mux.HandleFunc("GET /api/instances/{name}/shell", s.handleInstanceShell)
+	s.mux.HandleFunc("POST /api/instances/{name}/power", s.handleInstancePower)
+	s.mux.HandleFunc("POST /api/instances/{name}/password", s.handleInstancePassword)
+
+	// 分配归属只属于管理员：它在发「谁能动哪台机器」的钥匙
+	s.mux.HandleFunc("POST /api/instances/{name}/assign", s.handleInstanceAssign)
+	s.mux.HandleFunc("DELETE /api/instances/{name}/assign", s.handleInstanceUnassign)
+	s.mux.HandleFunc("GET /api/instance-owners", s.handleInstanceOwners)
+
 	// 管理员区：处理申请，以及管人 —— 成员、登录凭证、会话都在这里
 	s.mux.HandleFunc("GET /api/applications", s.handleApplications)
 	s.mux.HandleFunc("POST /api/applications/{id}/decision", s.handleDecision)
@@ -97,6 +112,8 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("POST /api/gpu-bookings/{id}/attach", s.handleGPUAttach)
 	s.mux.HandleFunc("POST /api/gpu-bookings/{id}/detach", s.handleGPUDetach)
 	s.mux.HandleFunc("POST /api/gpu-bookings/{id}/cancel", s.handleGPUCancel)
+	// 删记录是管理员动作：它把一条留痕彻底抹掉，比改状态更需要收口
+	s.mux.HandleFunc("DELETE /api/gpu-bookings/{id}", s.handleGPUDelete)
 	s.mux.HandleFunc("POST /api/instances/{name}/restart", s.handleInstanceRestart)
 	s.mux.HandleFunc("GET /api/users", s.handleUsers)
 	s.mux.HandleFunc("POST /api/users", s.handleUserCreate)
@@ -205,12 +222,30 @@ func requiredLevel(method, p string) level {
 	// 动宿主的动作一律只有管理员：挂卡、摘卡、审批、重启
 	case strings.HasPrefix(p, "/api/instances/") && strings.HasSuffix(p, "/restart"):
 		return levelAdmin
+	// 自己实例的电源、口令与网页终端登录即可到达，
+	// 但「这台机器是不是你的」在 handler 里判 —— 归属是业务口径，路由层看不出来。
+	// 这里显式写出来而不是让它落到默认分支，是为了让「刻意放开」这件事
+	// 在代码里看得见：默认分支是兜底，不是决策。
+	case strings.HasPrefix(p, "/api/instances/") &&
+		(strings.HasSuffix(p, "/power") ||
+			strings.HasSuffix(p, "/password") ||
+			strings.HasSuffix(p, "/shell")):
+		return levelUser
+	// 分配归属是管理员动作：它决定谁能动哪台机器
+	case p == "/api/instance-owners":
+		return levelAdmin
+	case strings.HasPrefix(p, "/api/instances/") && strings.HasSuffix(p, "/assign"):
+		return levelAdmin
 	// 预约本体分两级：看排期与提交申请是登录即可，
 	// 审批与挂载摘卡必须是管理员 —— 这与前端隐藏按钮是两道独立的关卡
 	case strings.HasPrefix(p, "/api/gpu-bookings/") &&
 		(strings.HasSuffix(p, "/decision") ||
 			strings.HasSuffix(p, "/attach") ||
 			strings.HasSuffix(p, "/detach")):
+		return levelAdmin
+	// 抹掉一条预约：会连留痕一起抹，只能管理员做。
+	// 这里按 method 判而不是按后缀 —— DELETE 的路径与 POST /cancel 长得几乎一样
+	case method == http.MethodDelete && strings.HasPrefix(p, "/api/gpu-bookings/"):
 		return levelAdmin
 	}
 	return levelUser
@@ -476,9 +511,24 @@ func clamp(v string, n int) string {
 // ---------------------------------------------------------------- 实例
 
 func (s *Server) handleInstances(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"instances": s.cfg.Recon.Views(),
-	})
+	views := s.cfg.Recon.Views()
+	// 每台实例附上「登记在谁名下」。没有它，租户点一台别人的机器被拒时
+	// 只看到一句「只能操作自己名下的实例」，却看不出这台机器归谁 ——
+	// 那种拒绝看起来像 bug。而宿主上确实存在台账之外手工建的实例，
+	// 它们的属主是空的，页面上要敢把它显示成「未登记」。
+	out := make([]map[string]any, 0, len(views))
+	for _, v := range views {
+		item := map[string]any{}
+		raw, err := json.Marshal(v)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "序列化实例失败"})
+			return
+		}
+		_ = json.Unmarshal(raw, &item)
+		item["owner"] = s.instanceOwner(v.Name)
+		out = append(out, item)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"instances": out})
 }
 
 func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {

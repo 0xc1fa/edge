@@ -143,6 +143,42 @@ func TestGPUDecideConflict(t *testing.T) {
 	}
 }
 
+// TestGPUDelete 删除是为了让「不该存在的记录」真的消失 ——
+// 测试留下的假数据、填错的实例名，取消（Cancel）是清不掉的。
+// 但卡还挂着时不给删：那张卡记在这条预约名下，抹掉它，
+// 到期巡检就找不到该摘谁，卡会一直留在实例上。
+func TestGPUDelete(t *testing.T) {
+	s := newGPUStore(t)
+	now := time.Now()
+	date := now.Format("2006-01-02")
+
+	b, _ := s.Create(GPUInput{Instance: "t1", Applicant: "张三", Date: date}, 1, now)
+	if _, err := s.Delete(b.ID); err != nil {
+		t.Fatalf("还没挂卡的记录应当可以删除: %v", err)
+	}
+	if got := len(s.List()); got != 0 {
+		t.Errorf("删除后应当一条不剩，实际 %d", got)
+	}
+	if _, err := s.Delete(b.ID); err == nil {
+		t.Error("删一条不存在的记录应当报错")
+	}
+
+	// 挂上卡之后不给删：先摘，再删
+	b2, _ := s.Create(GPUInput{Instance: "t1", Applicant: "张三", Date: date}, 1, now)
+	s.Decide(b2.ID, "approve", "", "管理员", 1, now)
+	s.MarkAttached(b2.ID, "gpu0", now)
+	if _, err := s.Delete(b2.ID); err == nil {
+		t.Fatal("卡还挂着就能删掉记录，巡检会找不到该摘谁")
+	}
+	s.MarkDetached(b2.ID, "手动摘卡", now)
+	if _, err := s.Delete(b2.ID); err != nil {
+		t.Errorf("摘卡之后应当可以删除: %v", err)
+	}
+	if got := len(s.List()); got != 0 {
+		t.Errorf("删完应当一条不剩，实际 %d", got)
+	}
+}
+
 // TestGPUWindow 时段是固定的 9 点到 16 点。
 // 写死在测试里是因为到期摘卡的时间点完全由它决定：
 // 这两个常量一动，卡被摘走的时刻就跟着变。

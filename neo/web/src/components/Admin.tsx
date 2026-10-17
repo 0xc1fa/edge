@@ -4,10 +4,10 @@ import { api } from '../api';
 import { BRAND, Logo } from './ui';
 import ApplicationsPane from './ApplicationsPane';
 import Dashboard from './Dashboard';
-import GpuPane from './GpuPane';
+import GpuPane from './gpu/GpuPane';
 import LoginCard from './LoginCard';
 import SessionsPane from './SessionsPane';
-import type { InstanceView, SessionInfo } from '../types';
+import type { SessionInfo } from '../types';
 
 interface Props {
   onBack: () => void;
@@ -33,8 +33,6 @@ export default function Admin({ onBack, token = '' }: Props) {
   const [unknown, setUnknown] = useState(true);
   const [tab, setTab] = useState<Tab>('instances');
   const [pending, setPending] = useState(0);
-  // 实例名单给 GPU 申请抽屉用：申请必须挂在某台具体的机器上
-  const [instances, setInstances] = useState<InstanceView[]>([]);
 
   const refresh = useCallback(async () => {
     try {
@@ -57,14 +55,6 @@ export default function Admin({ onBack, token = '' }: Props) {
     const timer = window.setInterval(() => void refresh(), 20_000);
     return () => window.clearInterval(timer);
   }, [me?.authenticated, refresh]);
-
-  useEffect(() => {
-    if (!me?.authenticated) return;
-    api
-      .instances()
-      .then((r) => setInstances(r.instances))
-      .catch(() => undefined);
-  }, [me?.authenticated]);
 
   // 待办数量要常显：管理员不该为了知道有没有新申请而反复点进申请页
   useEffect(() => {
@@ -121,20 +111,17 @@ export default function Admin({ onBack, token = '' }: Props) {
           className="app-tabs"
         >
           <Tabs.TabPanel value="instances" label="实例" destroyOnHide={false}>
-            <Dashboard />
+            <Dashboard canManage={isAdmin} me={me.user?.name ?? ''} />
           </Tabs.TabPanel>
           {/*
-            GPU 排期对所有人开放：成员要回答的第一件事就是「我想约那天还有没有位子」，
+            GPU 调度对所有人开放：成员要回答的第一件事就是「那张卡现在有没有被挂走」，
             看不到别人的占用就只能一遍遍提交、一遍遍被拒。
-            审批与挂载按钮由 canManage 决定在不在，后端还会再挡一道。
+            但两边看到的不是同一份：成员只看到真正发生过调度的记录，
+            待批准那一摊只有管理员看得到（他要在这里批准和挂载）。
+            裁剪由服务端做，后端还会再按角色收一道。
           */}
-          <Tabs.TabPanel value="gpu" label="GPU" destroyOnHide={false}>
-            <GpuPane
-              canManage={isAdmin}
-              me={me.user?.name ?? ''}
-              instances={instances}
-              onChanged={() => undefined}
-            />
+          <Tabs.TabPanel value="gpu" label="GPU 调度" destroyOnHide={false}>
+            <GpuPane canManage={isAdmin} onChanged={() => undefined} />
           </Tabs.TabPanel>
           {/*
             申请审批只属于管理员。

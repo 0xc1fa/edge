@@ -19,6 +19,10 @@ import (
 // 换句话说，写操作不是「随手改宿主的口子」，而是预约台账的一次状态迁移。
 type Client struct {
 	base string
+	// socketPath 是 unix socket 路径。留着它不只是为了日志：
+	// 交互式 exec 要在同一条 socket 上再建一条 WebSocket，
+	// 那个 dialer 需要用这个路径。
+	socketPath string
 	// 读操作超时短：对账每 10 秒一轮，卡住的读必须尽快失败
 	http *http.Client
 	// 写操作超时长：设备热插与重启是异步操作，要等它真正落地
@@ -34,9 +38,10 @@ func NewClient(socketPath string) *Client {
 		},
 	}
 	return &Client{
-		base:  "http://incus",
-		http:  &http.Client{Timeout: 10 * time.Second, Transport: transport},
-		write: &http.Client{Timeout: 90 * time.Second, Transport: transport},
+		base:       "http://incus",
+		socketPath: socketPath,
+		http:       &http.Client{Timeout: 10 * time.Second, Transport: transport},
+		write:      &http.Client{Timeout: 90 * time.Second, Transport: transport},
 	}
 }
 

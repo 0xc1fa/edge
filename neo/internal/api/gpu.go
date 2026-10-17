@@ -82,13 +82,38 @@ func gpuToView(b store.GPUBooking, now time.Time, mask bool) gpuView {
 	return v
 }
 
+// gpuVisible 决定一条预约该不该出现在某个角色看到的列表里。
+//
+// 成员只看「已经发生过调度」的：卡真的挂上去过，才对得起「调度日志」这四个字。
+// 没挂过的（待批准、已批准、已驳回、已取消）对他既不能操作，
+// 也容易被误读成进度 —— 看见「已批准」的人会以为卡已经到手了，而那一刻卡还没动。
+//
+// 抽成函数而不是内联在循环里，是因为这条边界要能被测试单独钉住：
+// 它是一条产品口径，改起来必须有人明确地改一次。
+func gpuVisible(b store.GPUBooking, isAdmin bool) bool {
+	if isAdmin {
+		return true
+	}
+	return b.AttachedAt != ""
+}
+
 // ---------------------------------------------------------------- 列表
 
 // handleGPUList 返回预约列表。
 //
 // 成员也能看，而且**应当**能看：他要回答的第一个问题是「我想约那天还有没有位子」，
 // 看不到别人的占用就只能一遍遍提交、一遍遍被拒。
-// 能看的只是排期，不是别人的联系方式 —— 那一列对非管理员脱敏。
+//
+// 但两边看到的不是同一份东西：
+//
+//	管理员 —— 全部。他要点批准、点挂载，看不到待办就没法干活。
+//	成员   —— 只有真正发生过调度的那些（挂上去过的）。
+//
+// 待批准、已批准、已驳回、已取消，对成员都是噪音：他既批不了也挂不上，
+// 看到「已批准」反而会以为卡已经有着落了 —— 而那一刻卡其实还没动。
+// 这一页对成员的意义是「调度日志」：哪台机器、什么时候挂的、什么时候摘的。
+//
+// 裁剪放在服务端而不是前端：前端藏起来的东西，接口照样会给出去。
 func (s *Server) handleGPUList(w http.ResponseWriter, r *http.Request) {
 	isAdmin := s.isAdmin(r)
 	now := time.Now()
@@ -99,7 +124,14 @@ func (s *Server) handleGPUList(w http.ResponseWriter, r *http.Request) {
 		if b.Status == store.GPUPending {
 			pending++
 		}
+		if !gpuVisible(b, isAdmin) {
+			continue
+		}
 		out = append(out, gpuToView(b, now, !isAdmin))
+	}
+	if !isAdmin {
+		// 待办数只对管理员有意义：成员面前没有待办这一栏
+		pending = 0
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"bookings":      out,
@@ -213,6 +245,84 @@ func (s *Server) handleGPUDecide(w http.ResponseWriter, r *http.Request) {
 
 // ---------------------------------------------------------------- 挂载 / 摘卡
 
+// gpuMountedBeforeBoot 判断这台机器在**本次容器启动之前**就已经带着一张卡。
+//
+// 这件事决定挂上去的卡要不要重启才看得见。驱动钩子（/dev/nvidia*、CUDA 库）
+// 是在容器**启动时**注入的：启动那一刻没有卡，运行时才插进去的设备就有、
+// 但容器里没人给它铺好环境，于是 nvidia-smi 看不到，得重启一次让钩子补跑。
+// 反过来，只要这次启动本来带着卡，之后的插拔都是真热插 —— 实测同一 PID 下，
+// 摘掉设备 /dev/nvidia0 立刻消失，插回去两秒内就认得卡。
+//
+// 所以判据是「容器启动时有没有卡」，不是「此刻有没有卡」、也不是「runtime 开了没有」：
+// runtime 开着却从没重启过的实例，照样看不见卡。
+func gpuMountedBeforeBoot(instance string, items []store.GPUBooking, bootAt time.Time) bool {
+	if bootAt.IsZero() {
+		return false
+	}
+	// 取这台机器上最早一次真正挂上去的时刻（active 与 ended 才算，
+	// 那两种状态下卡确实在实例上待过）
+	first := time.Time{}
+	for _, b := range items {
+		if b.Instance != instance || b.AttachedAt == "" {
+			continue
+		}
+		if b.Status != store.GPUActive && b.Status != store.GPUEnded {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, b.AttachedAt)
+		if err != nil {
+			continue
+		}
+		if first.IsZero() || t.Before(first) {
+			first = t
+		}
+	}
+	if first.IsZero() {
+		return false // 这台机器从来没挂成功过卡：冷启动，必须重启一次
+	}
+	return first.Before(bootAt)
+}
+
+// gpuWantsRestart 这次挂载之后要不要请管理员重启实例。
+//
+// 两个信号其实在问同一件事 —— 「这个容器进程有没有带着 GPU 设备起步过」：
+//
+//	挂载前实例上就已经挂着卡 → 这次生命周期它接触过 GPU，钩子必然在；
+//	台账里有早于本次启动的挂载记录 → 那次之后重启过，钩子带着起步。
+//
+// 第一个信号存在的理由不是冗余：台账记录是会被删除的（清理测试数据、
+// 抹掉误填的假记录都是正经操作），记录一没，第二个信号就退化成
+// 「这台机器从来没挂过卡」，于是明明能热插的情形也被判成要重启。
+// 两个信号各自都不完整，合起来才覆盖得住。
+//
+// 拿不到容器启动时刻（实例没在跑、或 recon 还没扫到）时保守地说"要"：
+// 多问一句只是一次询问，漏掉一次会让租户对着 nvidia-smi 查半天。
+func gpuWantsRestart(hadGPUDevice bool, instance string, items []store.GPUBooking, bootAt time.Time) bool {
+	if hadGPUDevice {
+		return false
+	}
+	if bootAt.IsZero() {
+		return true
+	}
+	return !gpuMountedBeforeBoot(instance, items, bootAt)
+}
+
+// gpuNeedsRestart 取值交给 gpuWantsRestart，这里只负责把数据找齐。
+//
+// 这里刻意不去自动重启 —— 与前几版的做法一致：重启会打断租户正在跑的东西，
+// 这个动作只能由人按下去。宿主脚本 tenant-ctl.sh 会在同一情形下替人重启，
+// 所以脚本看起来"总是立即生效"，页面则是把这一步摆到管理员面前。
+func (s *Server) gpuNeedsRestart(instance string, hadGPUDevice bool) bool {
+	for _, v := range s.cfg.Recon.Views() {
+		if v.Name != instance {
+			continue
+		}
+		bootAt, _ := time.Parse(time.RFC3339, v.StartedAt)
+		return gpuWantsRestart(hadGPUDevice, instance, s.cfg.GPUS.List(), bootAt)
+	}
+	return true
+}
+
 // handleGPUAttach 把卡挂到实例上。
 //
 // 顺序是有讲究的：先写 nvidia.runtime，再加设备，最后改台账。
@@ -264,19 +374,29 @@ func (s *Server) handleGPUAttach(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dev := freeGPUDeviceName(inst.Devices)
+	// 挂载**之前**实例上有没有别的卡 —— 这是判断要不要重启的一半依据，
+	// 所以要在这里取，等插上去之后就分不清新卡旧卡了
+	hadGPUDevice := false
+	for _, d := range inst.Devices {
+		if d["type"] == "gpu" {
+			hadGPUDevice = true
+			break
+		}
+	}
 
 	ctx := r.Context()
 	if err := s.cfg.Incus.PatchConfig(ctx, b.Instance, map[string]string{"nvidia.runtime": "true"}); err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "设置 nvidia.runtime 失败: " + err.Error()})
 		return
 	}
+	// 只给 pci，不给 productid/vendorid：Incus 的设备校验明确拒这两者与 pci 同时出现
+	// （"Cannot use \"productid\" when \"pci\" is set"）。按地址挂载本身已经是精确到卡的，
+	// 厂商与型号只是冗余描述 —— 冗余到会被拒绝的程度，就不该写。
 	if err := s.cfg.Incus.AddDevice(ctx, b.Instance, map[string]string{
-		"name":      dev,
-		"type":      "gpu",
-		"gputype":   "physical",
-		"pci":       pci,
-		"productid": "2684",
-		"vendorid":  "10de",
+		"name":    dev,
+		"type":    "gpu",
+		"gputype": "physical",
+		"pci":     pci,
 	}); err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "挂载失败: " + err.Error()})
 		return
@@ -293,13 +413,22 @@ func (s *Server) handleGPUAttach(w http.ResponseWriter, r *http.Request) {
 	}
 	s.refreshRecon()
 
+	// 要不要重启由这次挂载之前容器是否带卡决定，不是一律要。
+	// 冷实例第一次挂卡必须重启；已经带着卡启动过的容器，热插就是真的。
+	needsRestart := s.gpuNeedsRestart(b.Instance, hadGPUDevice)
+	hint := fmt.Sprintf("已挂到 %s（%s，设备名 %s）。", b.Instance, pci, dev)
+	if needsRestart {
+		hint += "这台实例的容器还没带着卡启动过，租户侧要看到卡需要重启一次。"
+	} else {
+		hint += "租户侧这次就能用到卡（容器已经带好了驱动环境），不必重启。"
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"booking": gpuToView(updated, time.Now(), false),
-		// 设备进了实例，不等于容器里的 /dev/nvidia* 立刻可见 ——
-		// 这件事在这台机器上通常要重启才生效。要不要重启由管理员决定：
-		// 自动重启会打断实例上正在跑的东西。
-		"needs_restart": true,
-		"hint":          fmt.Sprintf("已挂到 %s（%s，设备名 %s）。若租户侧 nvidia-smi 看不到卡，需要重启实例。", b.Instance, pci, dev),
+		// 设备进了实例定义，不等于容器里立刻看得见。
+		// 什么时候必须重启、什么时候不用，判据写在 gpuNeedsRestart 的注释里。
+		"needs_restart": needsRestart,
+		"hint":          hint,
 	})
 }
 
@@ -327,7 +456,7 @@ func (s *Server) handleGPUDetach(w http.ResponseWriter, r *http.Request) {
 	// 目标是「卡不在实例上」，它已经成立了，只是要回头把台账改对。
 	var removed string
 	if b.Device != "" {
-		if err := s.cfg.Incus.RemoveDevice(r.Context(), b.Instance, b.Device); err != nil {
+		if err := s.cfg.Incus.RemoveGPUDevice(r.Context(), b.Instance, b.Device); err != nil {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "摘卡失败: " + err.Error()})
 			return
 		}
@@ -347,6 +476,27 @@ func (s *Server) handleGPUDetach(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"booking": gpuToView(updated, time.Now(), false),
 		"hint":    "已摘卡：" + removed,
+	})
+}
+
+// handleGPUDelete 把一条预约从台账里抹掉。
+//
+// 只给管理员（路由层已收口），而且只抹「卡不在实例上」的那些 ——
+// active 的那条必须先摘卡，store.Delete 会挡。
+//
+// 为什么需要它：没有它，一次验证、一次填错实例名留下的记录
+// 会永久挂在台账上，而且页面又不能假装它不存在 ——
+// 那样管理员就只能靠停机改文件来清理，而停机改文件本身更难核对。
+func (s *Server) handleGPUDelete(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	b, err := s.cfg.GPUS.Delete(id)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"booking": gpuToView(b, time.Now(), false),
+		"hint":    "已删除 " + b.Instance + " 的这条记录",
 	})
 }
 
@@ -503,7 +653,7 @@ func (s *Server) sweepGPU(log func(string, ...any)) {
 			continue
 		}
 		if b.Device != "" {
-			if err := s.cfg.Incus.RemoveDevice(context.Background(), b.Instance, b.Device); err != nil {
+			if err := s.cfg.Incus.RemoveGPUDevice(context.Background(), b.Instance, b.Device); err != nil {
 				if log != nil {
 					log("GPU 到期自动摘卡失败", "预约", b.ID, "实例", b.Instance, "err", err)
 				}

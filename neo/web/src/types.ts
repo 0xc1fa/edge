@@ -27,6 +27,12 @@ export interface Ingress {
 /** 实例视图，字段与后端 View 结构体一一对应。 */
 export interface InstanceView {
   name: string;
+  /**
+   * 登记在谁名下（从开通台账推导）。空串表示这台机器没有属主 ——
+   * 宿主上手工建的实例就是这样。这种实例只有管理员能操作，
+   * 页面上要把「未登记」显示出来，否则租户点它被拒时看不出原因。
+   */
+  owner?: string;
   type: string;
   type_label: string;
   status: string;
@@ -234,7 +240,11 @@ export interface ApplyInput {
 }
 
 /** 申请单。管理员视角能看到完整联系方式与公钥，申请人查询时服务端已脱敏。 */
-/** GPU 预约：某台机器在某一天的一段固定时段里用卡。 */
+/**
+ * GPU 预约。
+ * 成员拿到的只有「已经真正调度过」的那些（挂上去过的）；
+ * 待批准、已取消这类还没发生调度的，服务端不发给成员。
+ */
 export interface GPUBooking {
   id: string;
   instance: string;
@@ -262,7 +272,15 @@ export interface GPUBooking {
   ended: boolean;
 }
 
-/** GPU 排期总览：台账 + 此刻还能批几张 + 时段口径。 */
+/** 一条实例归属登记：哪台机器归谁、谁分的、什么时候分的。 */
+export interface InstanceOwner {
+  instance: string;
+  owner: string;
+  assigned_by: string;
+  assigned_at: string;
+}
+
+/** GPU 调度总览：调度日志（管理员另有待办）+ 此刻还能批几张。 */
 export interface GPUOverview {
   bookings: GPUBooking[];
   pending: number;

@@ -12,18 +12,30 @@ ADDR="${ADDR:-http://127.0.0.1:5902}"
 DATA_DIR="${DATA_DIR:-$(dirname "$0")/../data}"
 FAIL=0
 
-# 登录凭证一次性兑换即作废，所以这里要注意两件事：
-#   1. 整脚本只兑换一次，之后全程复用同一个 cookie jar；
-#   2. bootstrap 文件只在全新部署时生成，因此只在「刚装好还没人登过」时有效。
-# 已经跑过一轮的服务，请在控制台 成员 → 签发 现场复制一条，用 SMOKE_TOKEN=xxx 注入。
+# 两条进控制台的路：管理员口令，或管理员签发的一次性凭证。
+#
+# 口令优先。原因是凭证这条路在「服务已经跑过一轮」之后很难复现：
+# neo invite 是另一个进程直接写台账文件，运行中的服务内存里没有它，
+# 下一次落盘还会把它覆盖掉 —— 换来的凭证兑不出来，表现为一路 401。
+# 而管理员口令就在数据目录里躺着（`make password` 随时可看），永远可用。
+#
+# 凭证这条路仍然保留：它是成员进来的唯一方式，
+# 且「不可重复使用」这条性质只有走一遍才验证得到。
 TOKEN="${SMOKE_TOKEN:-}"
 if [ -z "$TOKEN" ] && [ -f "$DATA_DIR/bootstrap-invite.txt" ]; then
   TOKEN=$(grep -oE 'token=[A-Za-z0-9_-]{16,}' "$DATA_DIR/bootstrap-invite.txt" | head -1 | cut -d= -f2)
 fi
 
+PASS="${SMOKE_PASSWORD:-}"
+if [ -z "$PASS" ] && [ -f "$DATA_DIR/admin-password.txt" ]; then
+  PASS=$(head -1 "$DATA_DIR/admin-password.txt" | tr -d '[:space:]')
+fi
+AUTHED=no
+
 # 会话凭证容器，全局复用：兑换一次的凭证撑不起两次登录
 JAR=$(mktemp)
-cleanup() { rm -f "$JAR"; }
+MJAR=""
+cleanup() { rm -f "$JAR" "${MJAR:-}"; }
 trap cleanup EXIT
 
 pass() { printf '  \033[32m✔\033[0m %s\n' "$1"; }
@@ -43,11 +55,7 @@ code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "$ADDR/api/instances
 if [ "$code" = "401" ]; then pass "未登录访问实例列表返回 401"; else bad "未登录返回 $code，期望 401"; fi
 
 sec "3/4 登录并比对真相"
-if [ -z "$TOKEN" ]; then
-  printf '  \033[33m●\033[0m 跳过：没有可用的凭证\n'
-  printf '     在控制台「成员 → 签发」复制一条，用 SMOKE_TOKEN=xxx 再跑本脚本；\n'
-  printf '     全新部署时 $DATA_DIR/bootstrap-invite.txt 里也有一条，但它只能用一次。\n'
-else
+if [ -n "$TOKEN" ]; then
   login=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -c "$JAR" \
     -H 'Content-Type: application/json' -d "{\"token\":\"$TOKEN\"}" "$ADDR/api/auth/redeem")
   if [ "$login" = "200" ]; then pass "凭证兑换成功，会话已签发"; else bad "兑换失败 HTTP $login"; fi
@@ -56,6 +64,19 @@ else
   reuse=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 \
     -H 'Content-Type: application/json' -d "{\"token\":\"$TOKEN\"}" "$ADDR/api/auth/redeem")
   if [ "$reuse" = "401" ]; then pass "凭证不可重复使用"; else bad "凭证竟然能二次兑换（HTTP $reuse）"; fi
+  AUTHED=yes
+elif [ -n "$PASS" ]; then
+  login=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -c "$JAR" \
+    -H 'Content-Type: application/json' -d "{\"password\":\"$PASS\",\"device\":\"smoke\"}" "$ADDR/api/auth/login")
+  if [ "$login" = "200" ]; then pass "管理员口令登录成功，会话已签发"; else bad "口令登录失败 HTTP $login"; fi
+  AUTHED=yes
+else
+  printf '  \033[33m●\033[0m 跳过：既没有口令也没有凭证\n'
+  printf '     口令在 $DATA_DIR/admin-password.txt（或 SMOKE_PASSWORD=xxx）；\n'
+  printf '     凭证要在控制台「成员 → 签发」复制一条，用 SMOKE_TOKEN=xxx 注入。\n'
+fi
+
+if [ "$AUTHED" = "yes" ]; then
 
   body=$(curl -sS --max-time 8 -b "$JAR" "$ADDR/api/instances")
   web_ip=$(printf '%s' "$body" | python3 -c '
@@ -132,18 +153,34 @@ a = json.load(open("/tmp/neo-apply.json"))["application"]
 print(a["id"], a["hostname"], a.get("login_user",""), a.get("image",""))
 ')
   pass "匿名提交申请成功，回执 $RID"
+elif [ "$code" = "429" ]; then
+  # 限流是保护管理员待办不被灌水的，连跑几次冒烟就会撞上。
+  # 这不是故障，但要把话说清楚 —— 否则看到的人会去查一个不存在的 bug。
+  printf '  \033[33m●\033[0m 匿名提交被限流（429）：额度是按时间恢复的，隔几分钟再跑本脚本\n'
+  printf '     这一项跳过不影响其余检查，但回执相关的用例会一并跳过。\n'
+  RID="" AUTOHOST="" AUTOUSER="" AUTOIMG=""
 else
   bad "匿名提交申请失败 HTTP $code：$(cat /tmp/neo-apply.json)"
 fi
 
-if [ -n "$AUTOHOST" ] && printf '%s' "$AUTOHOST" | grep -Eq '^vm-[a-z2-9]{5}$'; then
+if [ -z "$AUTOHOST" ]; then
+  printf '  \033[33m●\033[0m 跳过主机名与登录账户检查（没有回执）\n'
+elif printf '%s' "$AUTOHOST" | grep -Eq '^vm-[a-z2-9]{5}$'; then
   pass "主机名由系统自动生成，且不与现有实例冲突（$AUTOHOST）"
 else
   bad "自动生成的主机名不符合预期：$AUTOHOST"
 fi
 
-[ "$AUTOUSER" = "root" ] && pass "默认登录账户为 root" || bad "登录账户异常：$AUTOUSER"
-[ -n "$AUTOIMG" ] && pass "未选镜像时落到默认镜像（$AUTOIMG）" || bad "未选镜像时镜像为空"
+if [ -n "$AUTOUSER" ]; then
+  [ "$AUTOUSER" = "root" ] && pass "默认登录账户为 root" || bad "登录账户异常：$AUTOUSER"
+fi
+if [ -z "$AUTOIMG" ]; then
+  printf '  \033[33m●\033[0m 跳过默认镜像检查（没有回执）\n'
+elif [ -n "$AUTOIMG" ]; then
+  pass "未选镜像时落到默认镜像（$AUTOIMG）"
+else
+  bad "未选镜像时镜像为空"
+fi
 
 if [ -n "$RID" ]; then
   # 回执查询：必须可用，且必须脱敏。
@@ -167,27 +204,27 @@ fi
 
 # 非法输入必须被服务端挡住，而不是写进台账
 code=$(submit_apply "" "not-a-real-key" /dev/null)
-[ "$code" = "400" ] && pass "非法 SSH 公钥被拒绝" || bad "非法公钥未被拦下（HTTP $code）"
+reject "非法 SSH 公钥被拒绝" "$code"
 
 code=$(submit_apply "$AUTOHOST" "" /dev/null)
-[ "$code" = "400" ] && pass "与上一条自动生成名重名被拒" || bad "重名主机名未被拦下（HTTP $code）"
+reject "与上一条自动生成名重名被拒" "$code"
 
 # 不存在的规格/镜像不能混进来
 code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -X POST -H 'Content-Type: application/json' \
   -d "{\"hostname\":\"${HOST}y\",\"flavor\":\"nonexistent\",\"image\":\"$IMG\",\"ssh_public_key\":\"$KEY\",\"applicant\":\"冒烟\",\"contact\":\"smoke@example.com\",\"purpose\":\"测试非法规格\",\"duration_days\":1}" \
   "$ADDR/api/applications")
-[ "$code" = "400" ] && pass "不存在的规格被拒绝" || bad "不存在的规格返回了 $code"
+reject "不存在的规格被拒绝" "$code"
 
 # 产品规则：GPU 是标准实例的附加项，不得单独申购，也不得超量
 code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -X POST -H 'Content-Type: application/json' \
   -d "{\"hostname\":\"${HOST}g\",\"flavor\":\"\",\"image\":\"$IMG\",\"gpu_count\":1,\"ssh_public_key\":\"$KEY\",\"applicant\":\"冒烟\",\"contact\":\"smoke@example.com\",\"purpose\":\"只想要一张卡\",\"duration_days\":1}" \
   "$ADDR/api/applications")
-[ "$code" = "400" ] && pass "GPU 单独申购被拒（必须先有标准实例）" || bad "GPU 竟可单独申购（$code）"
+reject "GPU 单独申购被拒（必须先有标准实例）" "$code"
 
 code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -X POST -H 'Content-Type: application/json' \
   -d "{\"hostname\":\"${HOST}gx\",\"flavor\":\"$FLAVOR\",\"image\":\"$IMG\",\"gpu_count\":9,\"ssh_public_key\":\"$KEY\",\"applicant\":\"冒烟\",\"contact\":\"smoke@example.com\",\"purpose\":\"超量配卡\",\"duration_days\":1}" \
   "$ADDR/api/applications")
-[ "$code" = "400" ] && pass "超出显卡上限被拒" || bad "超量配卡未被拦下（$code）"
+reject "超出显卡上限被拒" "$code"
 
 GPUOPTS=$(python3 -c 'import json;print(len(json.load(open("/tmp/neo-catalog.json"))["gpu_models"]))')
 [ "$GPUOPTS" -gt 0 ] && pass "目录按型号返回显卡（$GPUOPTS 款）" || bad "目录缺少显卡型号"
@@ -205,13 +242,18 @@ print(p and (not p[0]["available"]) and p[0]["reason"] == "待上架" and p[0]["
 code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -X POST -H 'Content-Type: application/json' \
   -d "{\"hostname\":\"${HOST}pro\",\"flavor\":\"$FLAVOR\",\"gpu_model\":\"rtx-pro-6000\",\"gpu_count\":1,\"applicant\":\"冒烟\",\"contact\":\"smoke@example.com\",\"purpose\":\"试探没装的卡\",\"duration_days\":1}" \
   "$ADDR/api/applications")
-[ "$code" = "409" ] && pass "申购待上架的显卡被拒" || bad "未安装的显卡竟可下单（HTTP $code）"
+reject_code() { # $1=描述 $2=期望码 $3=实际码（409 与 400 都是业务拒绝，429 是限流）
+  if [ "$3" = "$2" ]; then pass "$1"
+  elif [ "$3" = "429" ]; then printf '  \033[33m●\033[0m 跳过「%s」：被限流（429）\n' "$1"
+  else bad "$1 未按预期被拒（HTTP $3）"; fi
+}
+reject_code "申购待上架的显卡被拒" 409 "$code"
 
 # 有数量的请求必须指名型号：只给张数不给了型号应被拦下
 code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -X POST -H 'Content-Type: application/json' \
   -d "{\"hostname\":\"${HOST}nm\",\"flavor\":\"$FLAVOR\",\"gpu_count\":1,\"applicant\":\"冒烟\",\"contact\":\"smoke@example.com\",\"purpose\":\"只给了数量\",\"duration_days\":1}" \
   "$ADDR/api/applications")
-[ "$code" = "400" ] && pass "未指明型号时 gpu_count 被拒" || bad "缺型号的请求未被拦下（HTTP $code）"
+reject "未指明型号时 gpu_count 被拒" "$code"
 
 sec "6/6 访问控制边界"
 code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "$ADDR/api/applications")
@@ -226,8 +268,8 @@ code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "$ADDR/api/instances
 
 # 登录后 Admin 侧应能看到未脱敏的联系方式，并把它结单，避免污染管理员待办
 # 这里复用第 3 节换来的会话：凭证已经作废，不可能再兑一次。
-if [ -z "$TOKEN" ] || [ -z "$RID" ]; then
-  printf '  \033[33m●\033[0m 跳过管理员侧校验（无凭证或回执）\n'
+if [ "$AUTHED" != "yes" ] || [ -z "$RID" ]; then
+  printf '  \033[33m●\033[0m 跳过管理员侧校验（未登录或没有回执）\n'
 else
   jar2="$JAR"
   raw=$(curl -sS --max-time 8 -b "$jar2" "$ADDR/api/applications" | python3 -c '
@@ -245,6 +287,225 @@ print("yes" if (mine and mine[0]["contact"] == "smoke@example.com") else "no")
     pass "管理员处理成功，台账已结单（待办不再堆积）"
   else
     bad "管理员处理失败 HTTP $code：$(cat /tmp/neo-decision.json)"
+  fi
+
+  # ------------------------------------------------------------ GPU 热挂载
+  # 这一段必须真的动宿主。单元测试能挡住「端点写错」（Incus 根本没有
+  # POST /instances/{n}/devices，只能整份 PUT），但挡不住「版本变了、
+  # 设备校验规则变了」这类只有在真实对话里才暴露的事 —— 而挂载失败
+  # 在页面上的表现只是一个红色提示，很容易被当成偶发。
+  # 做完立刻摘掉，不留副作用。
+  GPU_INST="${GPU_INST:-tenant01}"
+  gpu_busy=$(incus config device list "$GPU_INST" 2>/dev/null | while read -r d; do
+    [ -n "$d" ] && [ "$(incus config device get "$GPU_INST" "$d" type 2>/dev/null)" = "gpu" ] && echo yes && break
+  done)
+  if ! incus info "$GPU_INST" >/dev/null 2>&1; then
+    printf '  \033[33m●\033[0m 跳过 GPU 热挂载：实例 %s 不存在\n' "$GPU_INST"
+  elif [ -n "$gpu_busy" ]; then
+    printf '  \033[33m●\033[0m 跳过 GPU 热挂载：%s 上已经挂着卡（可能有人在用）\n' "$GPU_INST"
+  else
+    gid=$(curl -sS --max-time 8 -b "$jar2" -X POST -H 'Content-Type: application/json' \
+      -d "{\"instance\":\"$GPU_INST\",\"applicant\":\"冒烟测试\",\"purpose\":\"自动化验证热挂载链路\",\"card_count\":1}" \
+      "$ADDR/api/gpu-bookings" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("booking",{}).get("id",""))')
+    if [ -z "$gid" ]; then
+      bad "GPU 预约提交失败"
+    else
+      pass "GPU 预约已登记（$gid）"
+      code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -b "$jar2" -X POST \
+        -H 'Content-Type: application/json' -d '{"action":"approve"}' \
+        "$ADDR/api/gpu-bookings/$gid/decision")
+      [ "$code" = "200" ] && pass "预约已批准" || bad "批准失败 HTTP $code"
+
+      # 成员视角：这一页对他是「调度日志」。
+      # 此刻这条刚批准、还没挂卡 —— 他不该看到它：看到了会以为卡已经到手，
+      # 而那一刻卡其实还没动。裁剪必须发生在服务端，前端藏不住接口给出去的东西。
+      mtok=$(curl -sS --max-time 8 -b "$jar2" -X POST -H 'Content-Type: application/json' \
+        -d '{"name":"冒烟成员","ttl_seconds":300}' "$ADDR/api/invites" \
+        | python3 -c 'import sys,json;print(json.load(sys.stdin).get("invite",{}).get("token",""))')
+      if [ -z "$mtok" ]; then
+        bad "签发成员凭证失败，成员视角无法校验"
+      else
+        MJAR=$(mktemp)
+        code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -c "$MJAR" \
+          -H 'Content-Type: application/json' -d "{\"token\":\"$mtok\"}" "$ADDR/api/auth/redeem")
+        [ "$code" = "200" ] && pass "成员会话已签发" || bad "成员兑换失败 HTTP $code"
+
+        seen=$(curl -sS --max-time 8 -b "$MJAR" "$ADDR/api/gpu-bookings" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+ids = [b["id"] for b in d["bookings"]]
+ok = (
+    d.get("can_manage") is False
+    and all(b["attached_at"] for b in d["bookings"])
+    and "'"$gid"'" not in ids
+)
+print("yes" if ok else "no")
+')
+        [ "$seen" = "yes" ] && pass "成员看不到还没挂卡的记录（只看到调度日志）" \
+          || bad "成员视角越界：$seen"
+
+        code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -b "$MJAR" \
+          -X DELETE "$ADDR/api/gpu-bookings/$gid")
+        if [ "$code" = "200" ]; then bad "成员竟然能删除预约（HTTP 200）"; else pass "成员删预约被挡（HTTP $code）"; fi
+      fi
+
+      attach=$(curl -sS --max-time 30 -b "$jar2" -X POST "$ADDR/api/gpu-bookings/$gid/attach")
+      dev=$(printf '%s' "$attach" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("booking",{}).get("device",""))')
+      # 接口这次说要不要重启 —— 它看的不是「此刻有没有卡」，而是
+      # 「这个容器进程是不是带着 GPU 设备起步的」（详见 gpuWantsRestart 的注释）。
+      # 这里把接口的判断和容器里的实测对着看：说不用重启就必须真能立刻看到卡，
+      # 说了不用却看不到，就是判据漏了一边，比漏掉一次重启更难查。
+      need=$(printf '%s' "$attach" | python3 -c 'import sys,json;print("yes" if json.load(sys.stdin).get("needs_restart") else "no")')
+      if [ -n "$dev" ] && [ "$(incus config device get "$GPU_INST" "$dev" type 2>/dev/null)" = "gpu" ]; then
+        pass "卡已挂到 $GPU_INST（设备 $dev）"
+      else
+        bad "挂载未落地：$(printf '%s' "$attach" | head -c 200)"
+      fi
+
+      # 设备进了实例定义不等于租户能用：真正的判据是容器里看得到卡。
+      # 这台机器的容器里 /dev/nvidia* 要重启才注入，所以这里照页面上的顺序走一遍：
+      # 挂载 → 重启 → 再看。重启的代价（实例上正在跑的东西中断几秒）
+      # 与管理员点那个按钮时完全相同 —— 冒烟不该替使用者省掉这一步，
+      # 否则验的就不是「租户能不能用上卡」，而是「设备有没有写进实例定义」。
+      if incus exec "$GPU_INST" -- nvidia-smi -L 2>/dev/null | grep -q '^GPU '; then
+        if [ "$need" = "no" ]; then
+          pass "接口判不必重启，租户侧确实立刻看到卡（真·热插）"
+        else
+          printf '  \033[33m●\033[0m 接口保守地提示需重启，但这一挂其实没重启就生效了\n'
+        fi
+      elif [ "$need" = "no" ]; then
+        bad "接口判不必重启，租户侧却看不到卡（判据漏了一边）"
+      fi
+
+      if ! incus exec "$GPU_INST" -- nvidia-smi -L 2>/dev/null | grep -q '^GPU '; then
+        printf '  \033[33m●\033[0m 热插后容器里还看不到卡，按页面上的提示重启一次\n'
+        code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 -b "$jar2" \
+          -X POST "$ADDR/api/instances/$GPU_INST/restart")
+        [ "$code" = "200" ] && pass "重启实例（页面上的同一个按钮）" || bad "重启失败 HTTP $code"
+        ok=no
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+          sleep 3
+          if incus exec "$GPU_INST" -- nvidia-smi -L 2>/dev/null | grep -q '^GPU '; then
+            ok=yes
+            break
+          fi
+        done
+        [ "$ok" = "yes" ] && pass "重启后租户侧 nvidia-smi 看得到卡" || bad "重启后仍看不到卡"
+      fi
+
+      code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 -b "$jar2" \
+        -X POST "$ADDR/api/gpu-bookings/$gid/detach")
+      if [ "$code" = "200" ] && ! incus config device list "$GPU_INST" 2>/dev/null | grep -qx "$dev"; then
+        pass "卡已摘除，实例回到无卡状态"
+      else
+        bad "摘卡未生效（HTTP $code，设备 $dev 仍在）"
+      fi
+
+      # 收尾：没有卡了就不该再挂着驱动栈的开关
+      rt=$(incus config get "$GPU_INST" nvidia.runtime 2>/dev/null)
+      [ -z "$rt" ] && pass "nvidia.runtime 已随摘卡清理" || bad "nvidia.runtime 仍为 $rt"
+
+      # 摘下来之后这条就成了一条真正的调度留痕，成员此刻应当看得到它
+      if [ -n "${MJAR:-}" ] && [ -s "$MJAR" ]; then
+        seen2=$(curl -sS --max-time 8 -b "$MJAR" "$ADDR/api/gpu-bookings" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+print("yes" if "'"$gid"'" in [b["id"] for b in d["bookings"]] else "no")
+')
+        [ "$seen2" = "yes" ] && pass "挂过卡的记录成员看得到（调度留痕）" \
+          || bad "已发生调度的记录成员看不到"
+      fi
+
+      # 自己造的记录自己抹掉：冒烟不该在台账上留下垃圾，
+      # 否则每跑一次就多一条假数据，管理员的待办里永远有清不掉的东西
+      code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -b "$jar2" \
+        -X DELETE "$ADDR/api/gpu-bookings/$gid")
+      [ "$code" = "200" ] && pass "验证用的记录已删除（台账不留测试数据）" \
+        || bad "删除验证记录失败 HTTP $code"
+
+      left=$(curl -sS --max-time 8 -b "$jar2" "$ADDR/api/gpu-bookings" | python3 -c '
+import sys, json
+print("yes" if "'"$gid"'" not in [b["id"] for b in json.load(sys.stdin)["bookings"]] else "no")
+')
+      [ "$left" = "yes" ] && pass "台账里已查不到这条" || bad "删除后台账里还在"
+    fi
+  fi
+
+  # ------------------------------------------------------------ 自己实例的操作
+  # 网页终端、电源、重置口令。破坏性最大的两个（改口令、关机）在这里
+  # 只验「该拒的拒」，不真做：冒烟每次跑都会改掉租户的 root 口令、
+  # 杀掉他正在跑的任务，那种代价不该由一次例行检查承担。
+  # 真正要确认它们能用，看 scripts/verify-shell.sh 的人工步骤。
+  if [ "$AUTHED" = "yes" ] && incus info "$GPU_INST" >/dev/null 2>&1; then
+    # 网页终端：连上、发一条命令、看到结果。这一条没有副作用，
+    # 所以它要跑完整的链路 —— 它也是最容易在升级里悄悄坏掉的那个
+    # （Incus 的 exec 通道一有变化，表现只是「终端一闪就没」）。
+    shellout=$(timeout 25 python3 "$(dirname "$0")/shellcheck.py" \
+      "${ADDR#*://}" "$jar2" "$GPU_INST" 2>&1 | tail -3)
+    case "$shellout" in
+      *SHELL_OK*) pass "网页终端可用（连上、执行命令、看到输出）" ;;
+      *) bad "网页终端链路不通：$(printf '%s' "$shellout" | head -c 200)" ;;
+    esac
+
+    # 非法动作与空口令必须被拒：这两个分支没有副作用，却最容易在
+    # 加新动作时被顺手改宽。
+    code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -b "$jar2" -X POST \
+      -H 'Content-Type: application/json' -d '{"action":"explode"}' \
+      "$ADDR/api/instances/$GPU_INST/power")
+    reject "非法电源动作被拒" "$code"
+
+    code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -b "$jar2" -X POST \
+      -H 'Content-Type: application/json' -d '{"password":""}' \
+      "$ADDR/api/instances/$GPU_INST/password")
+    reject "空口令被拒" "$code"
+
+    # 过短口令必须被拒。用 3 位而不是 8 位是有讲究的：8 位刚好过线，
+    # 用例就会真的把租户的 root 口令改掉 —— 冒烟不该有这种副作用，
+    # 而写用例的人几乎一定会数错字符个数。
+    code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -b "$jar2" -X POST \
+      -H 'Content-Type: application/json' -d '{"password":"abc"}' \
+      "$ADDR/api/instances/$GPU_INST/password")
+    reject "过短口令被拒" "$code"
+
+    # -------------------------------------------------------- 归属分配
+    # 宿主上手工建的实例在申请台账里没有记录，不分一次，
+    # 租户侧的终端/口令/电源对它们永远是灰的。这一小段把
+    # 「分配 → 租户真能用 → 解除 → 入口关闭」整条闭环走一遍。
+    if [ -n "${MJAR:-}" ] && [ -s "$MJAR" ]; then
+      code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -b "$jar2" -X POST \
+        -H 'Content-Type: application/json' -d '{"owner":"冒烟成员"}' \
+        "$ADDR/api/instances/$GPU_INST/assign")
+      [ "$code" = "200" ] && pass "实例已分配给成员" || bad "分配失败 HTTP $code"
+
+      # 分完之后，那位成员必须真的能连上终端 —— 前面验过他被拒，
+      # 这两条合起来才说明「分配」确实改变了谁能动手。
+      memberout=$(timeout 25 python3 "$(dirname "$0")/shellcheck.py" \
+        "${ADDR#*://}" "$MJAR" "$GPU_INST" 2>&1 | tail -2)
+      case "$memberout" in
+        *SHELL_OK*) pass "分配后该成员能用网页终端" ;;
+        *) bad "分配后成员仍连不上终端：$(printf '%s' "$memberout" | head -c 160)" ;;
+      esac
+
+      code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -b "$jar2" -X POST \
+        -H 'Content-Type: application/json' -d '{"owner":"查无此人"}' \
+        "$ADDR/api/instances/$GPU_INST/assign")
+      reject "分配给不存在的成员被拒" "$code"
+
+      code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -b "$jar2" -X DELETE \
+        "$ADDR/api/instances/$GPU_INST/assign")
+      [ "$code" = "200" ] && pass "归属已解除" || bad "解除失败 HTTP $code"
+
+      # 解除之后入口必须重新关上：钥匙收回来不是一句提示就行的事
+      after=$(timeout 20 python3 "$(dirname "$0")/shellcheck.py" \
+        "${ADDR#*://}" "$MJAR" "$GPU_INST" 2>&1 | head -1)
+      case "$after" in
+        *403*) pass "解除后该成员被挡在门外" ;;
+        *) bad "解除后成员竟然还能连上：$after" ;;
+      esac
+
+      left=$(python3 -c 'import json;print(len(json.load(open("'"$DATA_DIR"'/instance-owners.json"))))' 2>/dev/null || echo 0)
+      [ "$left" = "0" ] && pass "归属台账已清空（不留测试数据）" || bad "归属台账还剩 $left 条"
+    fi
   fi
 
   # 会话台账现在也是可列举的：踢掉自己之后，原来的 cookie 必须立刻不能用

@@ -31,6 +31,11 @@ type Instance struct {
 	Profiles     []string                     `json:"profiles"`
 	Config       map[string]string            `json:"config"`
 	Devices      map[string]map[string]string `json:"devices"`
+	// 下面三个只在写回实例时需要：改设备是「读整份定义 → PUT 整份定义」，
+	// 少带一个字段就会被当成「把它清掉」，所以它们必须原样带回去。
+	Ephemeral   bool   `json:"ephemeral"`
+	Stateful    bool   `json:"stateful"`
+	Description string `json:"description"`
 }
 
 // State 是 /1.0/instances/{name}/state 返回的实时运行状态。

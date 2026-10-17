@@ -17,10 +17,10 @@ interface Props {
 const today = () => new Date().toISOString().slice(0, 10);
 
 /**
- * 申请 GPU 时段。
+ * 申请 GPU。
  *
  * 只问三件事：哪台机器、哪一天、用来做什么。
- * 时段本身不问 —— 它是固定的（每天 9 点到 16 点），问了反而让人以为可以调。
+ * 钟点不问 —— 卡挂上去之后由服务端在当天 16:00 摘下，问了反而让人以为可以调。
  *
  * 提交之后不会自动挂卡：这里产生的是一条待批准的预约，
  * 管理员批准之后再点挂载。把「申请」和「拿到卡」分开，
@@ -77,7 +77,7 @@ export default function GPUApplyDrawer({
     <Drawer
       visible
       onClose={onClose}
-      header="申请 GPU 时段"
+      header="申请 GPU"
       size="small"
       footer={
         <Space size="small">
@@ -124,7 +124,7 @@ export default function GPUApplyDrawer({
             }}
             onChange={(v) => setDate(String(v))}
           />
-          <span className="muted small">时段固定为 09:00–16:00，不需要选具体钟点</span>
+          <span className="muted small">卡挂上后由服务端在当天 16:00 自动摘下，不需要选钟点</span>
         </label>
 
         <label className="field">

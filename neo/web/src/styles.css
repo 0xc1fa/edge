@@ -295,6 +295,29 @@ a {
   white-space: nowrap;
 }
 
+/* ---------------------------------------------------------- 网页终端
+   xterm 自己会往这个容器里塞一个 canvas/div 混合的界面，
+   所以这里只负责「给它一块确定大小的黑地方」：高度不定的话，
+   终端会在第一帧按 0 高度渲染，之后 fit 也算不出正确的行列数。 */
+.shell-host {
+  height: calc(100vh - 220px);
+  min-height: 360px;
+  padding: 10px;
+  background: #0d1117;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.shell-host .xterm {
+  height: 100%;
+}
+
+/* xterm 的光标与选区在深色底上才正常；给它一个明确的底色，
+   免得继承到 TDesign 抽屉的浅色背景后看起来像一块灰布 */
+.shell-host .xterm-viewport {
+  background: #0d1117;
+}
+
 .cell-strong {
   font-weight: 600;
 }

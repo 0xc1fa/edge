@@ -302,6 +302,41 @@ func (s *GPUStore) Cancel(id, by string, now time.Time) (GPUBooking, error) {
 	return GPUBooking{}, errors.New("预约不存在")
 }
 
+// Delete 把一条预约从台账里彻底抹掉。
+//
+// 与 Cancel 不是一回事：Cancel 是「我不要了」，记录还在，留着一条痕；
+// Delete 是「这条本来就不该存在」—— 测试留下的假数据、填错的实例名，
+// 靠 Cancel 是清不掉的，它们会一直挂在管理员眼前。
+//
+// 正在挂着卡的（active）不给删：那张卡是记在这条预约名下的，
+// 抹掉它，16 点的自动摘卡就找不到该摘谁，卡会一直留在实例上。
+// 要删就先摘卡 —— 顺序与「先动宿主再改台账」是同一个道理。
+func (s *GPUStore) Delete(id string) (GPUBooking, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, b := range s.items {
+		if b.ID != id {
+			continue
+		}
+		if b.Status == GPUActive {
+			return GPUBooking{}, errors.New("卡还挂在实例上：请先摘卡，再删除这条记录")
+		}
+		// 复制一份再拼接：直接 append(s.items[:i], s.items[i+1:]...) 会
+		// 就地改动底层数组，saveLocked 失败回滚时那份 prev 也就被污染了
+		rest := make([]GPUBooking, 0, len(s.items)-1)
+		rest = append(rest, s.items[:i]...)
+		rest = append(rest, s.items[i+1:]...)
+		prev := s.items
+		s.items = rest
+		if err := s.saveLocked(); err != nil {
+			s.items = prev
+			return GPUBooking{}, err
+		}
+		return b, nil
+	}
+	return GPUBooking{}, errors.New("预约不存在")
+}
+
 // MarkAttached 记录「卡已经挂上去了」。device 是写进实例的设备名，摘卡时要用。
 func (s *GPUStore) MarkAttached(id, device string, now time.Time) (GPUBooking, error) {
 	s.mu.Lock()

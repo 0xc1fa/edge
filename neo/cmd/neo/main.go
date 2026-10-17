@@ -198,6 +198,14 @@ func runServe() error {
 		return err
 	}
 
+	// 实例归属台账：哪台机器归谁。与申请台账分开 ——
+	// 申请台账只覆盖走控制台开通的实例，而宿主上早有手工建的机器，
+	// 没有这张表，那些实例对租户侧的终端/口令/电源永远是灰的。
+	owners, err := store.NewOwnerStore(cfg.DataDir)
+	if err != nil {
+		return err
+	}
+
 	// GPU 预约台账。它与申请台账分开：一个是「给我台新机器」，
 	// 一个是「把那张卡挂到我已有的机器上用 8 小时」，动作性质不同。
 	gpus, err := store.NewGPUStore(cfg.DataDir)
@@ -227,6 +235,7 @@ func runServe() error {
 		// 但我们也只覆盖「本机实有的那一型」，不会凭配置造出一个没装的型号
 		Catalog: catalog.Default().WithGPUStock(cfg.GPUTotal),
 		Apps:    apps,
+		Owners:  owners,
 		GPUS:    gpus,
 		// 写通道：挂载、摘卡、重启都走它。
 		// 这是本项目第一次允许动宿主，范围限定在这三个动作上。

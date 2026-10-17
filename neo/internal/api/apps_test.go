@@ -236,7 +236,14 @@ func TestRequiredLevel(t *testing.T) {
 		{"POST", "/api/gpu-bookings/GU-20261017-7XK4/attach", levelAdmin},
 		{"POST", "/api/gpu-bookings/GU-20261017-7XK4/detach", levelAdmin},
 		{"POST", "/api/gpu-bookings/GU-20261017-7XK4/cancel", levelUser},
+		// 抹掉一条留痕只能管理员做。注意它与 POST .../cancel 的路径只差一个 method，
+		// 判权限时必须连 method 一起看
+		{"DELETE", "/api/gpu-bookings/GU-20261017-7XK4", levelAdmin},
 		{"POST", "/api/instances/tenant01/restart", levelAdmin},
+		// 自己实例的电源/口令/终端：登录即可，归属在 handler 里判
+		{"POST", "/api/instances/tenant01/power", levelUser},
+		{"POST", "/api/instances/tenant01/password", levelUser},
+		{"GET", "/api/instances/tenant01/shell", levelUser},
 		{"POST", "/api/invites/abc123/revoke", levelAdmin},
 		{"GET", "/api/sessions", levelAdmin},
 		{"POST", "/api/sessions/abc123/revoke", levelAdmin},
