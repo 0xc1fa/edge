@@ -1,0 +1,61 @@
+# =============================================================================
+# pool (项目: yetone/magpie) — 账号资源池层
+#   目录名 pool = 需求(把多人的 AI 账号统一成资源池); 项目本身是 magpie,
+#   故 container_name 仍用 magpie, 便于 docker ps 按项目识别
+# =============================================================================
+# 与 hub(new-api) 的关系（两者是平级的不同层，不要合并）:
+#   hub (new-api) = 管控层: 用户/令牌/额度/审计, 管 key 型渠道, 对外唯一入口 :18080
+#   acct-pool(magpie) = 账号池层: 把 Claude/Codex/Copilot/Gemini/Grok/WorkBuddy 等
+#                   订阅登录态聚成资源池, 做 OpenAI/Anthropic/Gemini 协议互转,
+#                   路由组(smart/order/rotate/usage/pace)在配额耗尽/限流时静默换号
+#
+# 流量: 设备 → hub:18080(令牌/审计) → acct-pool:127.0.0.1:3425(账号池/路由) → 上游
+# 对外只暴露 hub 的 18080; acct-pool 锁 127.0.0.1, 由 hub 作为「渠道」调用
+#
+# 镜像 tag: 0.1.1280（260117 钉死；实测 latest == 0.1 == 0.1.1280 同 digest c6fc61a3）
+# 升级方法: ghcr tags/list 分页 4 页(单页上限 1000，别只看第一页!)→ 取最高 0.1.NNN
+#           → 改上面 image → docker compose pull && docker compose up -d
+#           → 复核 magpie --version / health / magpie accounts(登录态在 pool_config 卷, 不丢)
+# 参考: https://usemagpie.ai/docs/zh/docker
+#
+# 为何 host 网络: 与 hub 一致, 出网走宿主 mihomo(:7890) 访问订阅上游,
+#   且 hub 的 NO_PROXY 已含 127.0.0.1, 调 127.0.0.1:3425 不走代理
+# 为何 MAGPIE_ADDR 锁 127.0.0.1: 镜像默认 0.0.0.0:3425, 不设会裸到所有网卡
+# 为何 Web 只绑 127.0.0.1:3430: 拿到 Web 链接=能改配置/看所有密钥, 必须走 SSH 隧道
+#
+# 启动: docker compose up -d
+# 管理 Web: ssh -L 3430:127.0.0.1:3430 <宿主>  然后开 http://127.0.0.1:3430/?k=<MAGPIE_WEB_KEY>
+# 日志: docker compose logs -f magpie
+# 停止: docker compose down   (config 卷保留)
+# =============================================================================
+
+services:
+  magpie:
+    image: ghcr.io/yetone/magpie:0.1.1280   # 260117 钉死; 该 tag 的 app 版本 = v0.1.1280
+    container_name: magpie
+    restart: unless-stopped
+    network_mode: host
+    # web 命令 = 网关 + Web UI; --no-open 不自动开浏览器; --addr 把 Web 绑回环
+    command: [web, --addr, 127.0.0.1:3430, --no-open]
+    environment:
+      MAGPIE_ADDR: 127.0.0.1:3425          # 网关只监听回环, 关键
+      MAGPIE_PUBLIC_URL: http://127.0.0.1:3425
+      MAGPIE_WEB_KEY: ${MAGPIE_WEB_KEY}    # 固定 key, 重启不变; 见 .env
+      TZ: ${TZ}
+      # 出网代理: 订阅上游(api.anthropic.com / chatgpt.com ...)需科学上网
+      HTTP_PROXY: "http://127.0.0.1:7890"
+      HTTPS_PROXY: "http://127.0.0.1:7890"
+      NO_PROXY: "127.0.0.1,localhost"
+    volumes:
+      # /config 存 供应商/密钥/登录态/插件/用量 —— 有状态数据用命名卷(与 hub/obs/base/infer/stacks 惯例一致)。
+      # 命名卷由 docker 按镜像内该路径属主(65532)初始化, 免手动 chown 的坑。
+      - pool_config:/config
+
+volumes:
+  # 数据已从 bind ./config 迁入本卷(260117)：118 个文件 md5 逐一校验一致。
+  # 卷由 `docker volume create pool_config` 预建并灌入数据，故声明 external，
+  # 避免每次 up 报 "already exists but was not created by Docker Compose" 警告。
+  # 原始 bind 目录与 config-backup-261017.tgz 暂留作回滚，确认无误后再清理。
+  pool_config:
+    external: true
+    name: pool_config
